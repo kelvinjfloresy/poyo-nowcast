@@ -13,3 +13,9 @@ data/raw/*
 data/processed/*.tif
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+
+# Credenciales y claves privadas
+.streamlit/
+*/.streamlit/
+*.toml
+secrets.toml

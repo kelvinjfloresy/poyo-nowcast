@@ -1,6 +1,7 @@
 """
 POYO-NOWCAST: Módulo 5 - Gemelo Digital Hidrodinámico, Territorial y Actuarial 3D
-Tecnología: Streamlit + PyDeck (Deck.gl WebGPU) + Plotly High-Density HUD + PyProj Geodésico.
+Tecnología: Streamlit + PyDeck (Deck.gl WebGPU) + Plotly C2 HUD + PyProj Geodésico.
+Integración: AEMET OpenData API + FNO 2D + Resiliencia Red Vial + Solvencia II.
 Autor: Kelvin Jesus Flores Yarihuaman
 Licencia: Open Science (CC BY 4.0)
 """
@@ -22,11 +23,17 @@ try:
 except ImportError:
     HAS_PYPROJ = False
 
+try:
+    from aemet_ingestor import AEMETRealTimeClient
+    HAS_AEMET = True
+except ImportError:
+    HAS_AEMET = False
+
 # ==============================================================================
-# CONFIGURACIÓN DEL ENTORNO Y ESTILOS HUD DE CENTRO DE MANDO
+# CONFIGURACIÓN DEL ENTORNO Y ESTILOS HUD C2 (CENTRO DE CONTROL)
 # ==============================================================================
 st.set_page_config(
-    page_title="POYO-NOWCAST | Digital Twin Horta Sud",
+    page_title="POYO-NOWCAST | Gemelo Digital Horta Sud",
     page_icon="🌊",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -35,30 +42,87 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;500;600;700&display=swap');
     
     html, body, [class*="css"] {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
     
     .main { 
-        background: radial-gradient(circle at 15% 15%, #0d1117 0%, #05080c 100%);
+        background: radial-gradient(circle at 10% 10%, #0d1117 0%, #04070b 100%);
     }
     
+    /* Cabecera HUD Táctica */
     .hud-header {
-        border-bottom: 1px solid #30363d;
-        padding-bottom: 14px;
-        margin-bottom: 20px;
+        background: rgba(22, 27, 34, 0.75);
+        backdrop-filter: blur(16px);
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 16px 22px;
+        margin-bottom: 14px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+    }
+
+    /* Tarjeta AEMET Destacada en Sidebar */
+    .aemet-card {
+        background: linear-gradient(135deg, rgba(31, 111, 235, 0.22) 0%, rgba(35, 134, 54, 0.22) 100%);
+        border: 1px solid #388bfd;
+        border-left: 5px solid #2ea043;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 16px;
+        box-shadow: 0 0 14px rgba(56, 139, 253, 0.2);
+    }
+
+    /* Banner de Telemetría AEMET en Directo */
+    .telemetry-strip {
+        background: rgba(13, 17, 23, 0.92);
+        border: 1px solid #30363d;
+        border-left: 4px solid #238636;
+        border-radius: 6px;
+        padding: 10px 18px;
+        margin-bottom: 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.82rem;
+    }
+
+    /* Leyenda Táctica del Visor 3D */
+    .legend-box {
+        background: rgba(22, 27, 34, 0.85);
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 10px 16px;
+        margin-bottom: 12px;
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        flex-wrap: wrap;
+        font-size: 0.80rem;
+    }
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .legend-bullet {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        display: inline-block;
     }
     
+    /* Métricas C2 */
     div[data-testid="stMetricValue"] {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 1.75rem !important;
+        font-size: 1.70rem !important;
         font-weight: 700;
         color: #f0f6fc;
     }
     div[data-testid="stMetricLabel"] {
-        font-size: 0.80rem !important;
+        font-size: 0.78rem !important;
         text-transform: uppercase;
         letter-spacing: 0.08em;
         color: #8b949e;
@@ -67,22 +131,57 @@ st.markdown(
     .stMetric {
         background: rgba(22, 27, 34, 0.85);
         backdrop-filter: blur(14px);
-        padding: 16px;
+        padding: 14px 18px;
         border-radius: 8px;
         border: 1px solid #30363d;
         border-left: 4px solid #1f6feb;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
     }
     
-    .badge-critical {
-        background: #da3633;
-        color: #ffffff;
-        padding: 4px 10px;
+    /* Badges de Alerta Dinámicos */
+    .badge-alert-green {
+        background: rgba(35, 134, 54, 0.2);
+        color: #3fb950;
+        border: 1px solid #238636;
+        padding: 4px 12px;
         border-radius: 4px;
         font-weight: 700;
-        font-size: 0.72rem;
+        font-size: 0.75rem;
         letter-spacing: 0.06em;
         font-family: 'JetBrains Mono', monospace;
+    }
+    .badge-alert-yellow {
+        background: rgba(210, 153, 34, 0.2);
+        color: #d29922;
+        border: 1px solid #bb8009;
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-weight: 700;
+        font-size: 0.75rem;
+        letter-spacing: 0.06em;
+        font-family: 'JetBrains Mono', monospace;
+    }
+    .badge-alert-orange {
+        background: rgba(219, 109, 40, 0.25);
+        color: #f0883e;
+        border: 1px solid #bd561d;
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-weight: 700;
+        font-size: 0.75rem;
+        letter-spacing: 0.06em;
+        font-family: 'JetBrains Mono', monospace;
+    }
+    .badge-alert-red {
+        background: #da3633;
+        color: #ffffff;
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-weight: 700;
+        font-size: 0.75rem;
+        letter-spacing: 0.06em;
+        font-family: 'JetBrains Mono', monospace;
+        box-shadow: 0 0 12px rgba(218, 54, 51, 0.6);
     }
     
     .deckgl-container {
@@ -97,10 +196,9 @@ st.markdown(
 )
 
 # ==============================================================================
-# FORMATEADORES NUMÉRICOS CON COMA DECIMAL (ESTÁNDAR ES)
+# FORMATEADORES NUMÉRICOS EUROPEOS
 # ==============================================================================
 def fmt_dec(val: float, decimals: int = 1, suffix: str = "") -> str:
-    """Formatea flotantes con coma decimal y separador de miles por punto."""
     if pd.isna(val) or not np.isfinite(val):
         return "—"
     fmt = f"{val:,.{decimals}f}"
@@ -108,13 +206,12 @@ def fmt_dec(val: float, decimals: int = 1, suffix: str = "") -> str:
     return f"{formatted}{suffix}"
 
 def fmt_int(val: float, suffix: str = "") -> str:
-    """Formatea enteros con separador de miles por punto."""
     if pd.isna(val) or not np.isfinite(val):
         return "—"
     return f"{int(round(val)):,}".replace(",", ".") + suffix
 
 # ==============================================================================
-# MOTOR GEODÉSICO Y GENERADOR AUTOCONTENIDO
+# MOTOR GEODÉSICO Y DATA PIPELINE
 # ==============================================================================
 class GeoProjector:
     def __init__(self):
@@ -147,7 +244,6 @@ def load_all_system_artifacts():
     geojson_path = "data/processed/horta_sud_road_network_status.geojson"
     summary_path = "data/processed/solvency_ii_qrt_summary.csv"
 
-    # Generación sintética si no existe el archivo físico del integrador
     if not os.path.exists(parquet_path):
         os.makedirs(os.path.dirname(os.path.abspath(parquet_path)), exist_ok=True)
         np.random.seed(46)
@@ -215,18 +311,12 @@ def load_all_system_artifacts():
 
 df_parcels, network_geojson, qrt_summary = load_all_system_artifacts()
 
-HOSPITALS_WGS84 = [
-    {"name": "H. Universitari i Politècnic La Fe", "lon": -0.3768, "lat": 39.4435, "beds": 1000, "status": "ALERTA MÁXIMA"},
-    {"name": "H. General Universitari de València", "lon": -0.4072, "lat": 39.4682, "beds": 550, "status": "OPERATIVO"},
-    {"name": "Hospital de Manises", "lon": -0.4608, "lat": 39.4930, "beds": 240, "status": "OPERATIVO"},
-]
-
 # ==============================================================================
-# BARRA LATERAL: ESCENARIOS CLIMÁTICOS Y CONTROLES OPERATIVOS
+# BARRA LATERAL: PANEL DE CONTROL Y CONFIGURACIÓN AEMET
 # ==============================================================================
 st.sidebar.markdown(
     """
-    <div style='padding: 12px; background: rgba(31, 111, 235, 0.15); border-left: 4px solid #1f6feb; border-radius: 6px; margin-bottom: 16px;'>
+    <div style='padding: 12px; background: rgba(31, 111, 235, 0.12); border-left: 4px solid #1f6feb; border-radius: 6px; margin-bottom: 16px;'>
         <b style='color: #58a6ff; font-size: 0.95rem;'>POYO-NOWCAST HUD</b><br/>
         <span style='color: #8b949e; font-size: 0.78rem;'>Mando Operativo & Transferencia de Riesgos</span>
     </div>
@@ -241,6 +331,9 @@ sim_mode = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 
+live_obs = None
+telemetry_active = False
+
 if sim_mode == "Modo Hindcast (Forense 29-O 2024)":
     st.sidebar.subheader("⏱️ Progresión Temporal de Avenida")
     sim_minute = st.sidebar.slider(
@@ -253,25 +346,56 @@ if sim_mode == "Modo Hindcast (Forense 29-O 2024)":
     q_peak_simulated = 1950.0 * progress
     factor_clima = 1.0
 else:
-    st.sidebar.subheader("⚡ Nowcast Dinámico & Horizontes Futuros")
+    st.sidebar.subheader("⚡ Nowcast & Conexión AEMET")
+    
+    # Destacado especial del Conector AEMET
+    st.sidebar.markdown("<div class='aemet-card'>", unsafe_allow_html=True)
+    conectar_aemet = st.sidebar.toggle("📡 Telemetría AEMET en Vivo", value=True)
+    st.sidebar.markdown(
+        "<span style='font-size:0.75rem; color:#c9d1d9;'>Conexión automática a red SAIH/AEMET de la cuenca (Chiva, Turís, Manises).</span></div>",
+        unsafe_allow_html=True
+    )
+    
     horizonte_clima = st.sidebar.selectbox(
         "Horizonte Climático (IPCC / EIOPA):",
         ["Actual (2024-2026)", "Horizonte 2030 (SSP2-4.5 / +8% Q)", "Horizonte 2050 (SSP5-8.5 / +22% Q)"],
     )
     factor_clima = 1.0 if "Actual" in horizonte_clima else (1.08 if "2030" in horizonte_clima else 1.22)
     
-    lead_time_min = st.sidebar.slider("Avance Temporal de Predicción (Lead Time):", 15, 180, 60, step=15, format="T + %d min")
+    lead_time_min = st.sidebar.slider("Avance Temporal (Lead Time):", 15, 180, 60, step=15, format="T + %d min")
+
+    # Ingesta meteorológica
+    rain_real = 0.0
+    if conectar_aemet and HAS_AEMET:
+        aemet_client = AEMETRealTimeClient()
+        live_obs = aemet_client.get_basin_live_rainfall()
+        telemetry_active = True
+        rain_real = live_obs["rain_4h_mm"]
+        
+        # Detección de AMC basada en lluvia
+        amc_auto = "Seco (AMC I)" if rain_real < 10.0 else ("Normal (AMC II)" if rain_real < 35.0 else "Saturado (AMC III)")
+        amc_mode = st.sidebar.selectbox("Humedad Antecedente (AMC):", [f"Auto AEMET: {amc_auto}", "Manual: Seco (AMC I)", "Manual: Normal (AMC II)", "Manual: Saturado (AMC III)"])
+        
+        if "Seco" in amc_mode:
+            amc_weight = 0.75
+        elif "Normal" in amc_mode:
+            amc_weight = 1.0
+        else:
+            amc_weight = 1.25
+        
+        rain_mm = st.sidebar.slider(
+            "Lluvia Cabecera (Sensor en vivo + Adicional):",
+            min_value=float(rain_real), max_value=600.0, value=float(rain_real), step=10.0,
+            help="Si hoy no llueve (0 mm), sube este control para simular una avenida convectiva sobre el sensor real."
+        )
+    else:
+        rain_mm = st.sidebar.slider("Precipitación Cabecera Chiva (mm / 4h):", 0, 650, 0, step=10)
+        soil_amc = st.sidebar.select_slider("Humedad Antecedente (AMC):", options=["Seco (AMC I)", "Normal (AMC II)", "Saturado (AMC III)"], value="Normal (AMC II)")
+        amc_weight = 1.25 if soil_amc == "Saturado (AMC III)" else (1.0 if soil_amc == "Normal (AMC II)" else 0.75)
+
+    propagation_factor = min(1.0, lead_time_min / 90.0)
     hour_label = f"T + {lead_time_min} min (Proyección FNO)"
 
-    rain_mm = st.sidebar.slider("Precipitación Cabecera Chiva (mm / 4h):", 50, 650, 380, step=10)
-    soil_amc = st.sidebar.select_slider(
-        "Humedad Antecedente (AMC):",
-        options=["Seco (AMC I)", "Normal (AMC II)", "Saturado (AMC III)"],
-        value="Saturado (AMC III)",
-    )
-    amc_weight = 1.25 if soil_amc == "Saturado (AMC III)" else (1.0 if soil_amc == "Normal (AMC II)" else 0.75)
-    propagation_factor = min(1.0, lead_time_min / 90.0)
-    
     current_depth_factor = (rain_mm / 450.0) * amc_weight * factor_clima * propagation_factor
     q_peak_simulated = min(3200.0, 1950.0 * (rain_mm / 490.0) * amc_weight * factor_clima * propagation_factor)
 
@@ -288,17 +412,95 @@ show_hospitals = st.sidebar.checkbox("Mostrar Centros Hospitalarios", value=True
 all_municipalities = sorted(df_parcels["municipality"].unique())
 selected_muns = st.sidebar.multiselect("Términos Municipales:", options=all_municipalities, default=all_municipalities)
 
+# Filtrado y escalado dinámico
 active_df = df_parcels[df_parcels["municipality"].isin(selected_muns)].copy()
 active_df["active_depth"] = (active_df["max_depth_m"] * current_depth_factor).astype(np.float32)
 active_df["active_loss"] = (active_df["economic_loss_eur"] * min(1.6, current_depth_factor**1.35)).astype(np.float64)
 
+# Triaje dinámico: si no hay agua, no hay rescates
+is_flooded = active_df["active_depth"] >= 0.25
+active_df["dynamic_collapse"] = active_df["structural_collapse"] & (active_df["active_depth"] >= 0.40)
+active_df["dynamic_p1"] = is_flooded & (
+    active_df["dynamic_collapse"] | 
+    (active_df["active_depth"] * active_df["max_velocity_ms"] >= 1.5) | 
+    (active_df["is_critical_infra"] & (active_df["active_depth"] >= 0.80))
+)
+
 # ==============================================================================
-# CABECERA EJECUTIVA Y MÉTRICAS FORMATO ES
+# LÓGICA DE ALERTA ANTICIPADA MULTIVARIABLE (METEOROLOGÍA + HIDROLOGÍA)
+# ==============================================================================
+# Mapeo seguro del valor de precipitación de cabecera
+rain_mm = locals().get('rain_val', locals().get('rainfall_mm', locals().get('precip_total', locals().get('add_rain', 0.0))))
+# Umbrales AEMET Meteoalerta (Chiva) y Plan Especial de Inundaciones GVA:
+# 1. Alerta Roja: Lluvia >= 180 mm en 4h O Caudal Rambla >= 1.200 m³/s
+# 2. Alerta Naranja: Lluvia >= 90 mm en 4h O Caudal Rambla >= 600 m³/s
+# 3. Alerta Amarilla: Lluvia >= 40 mm en 4h O Caudal Rambla >= 250 m³/s
+
+if rain_mm >= 180.0 or q_peak_simulated >= 1200.0:
+    if rain_mm >= 180.0 and q_peak_simulated < 1200.0:
+        badge_txt = "NIVEL ROJO // ALERTA PREVENTIVA METEOROLÓGICA (CABECERA > 180 mm)"
+    elif q_peak_simulated >= 1200.0 and rain_mm < 180.0:
+        badge_txt = "NIVEL ROJO // EMERGENCIA HIDRÁULICA (DESBORDAMIENTO RAMBLA)"
+    else:
+        badge_txt = "NIVEL ROJO // EMERGENCIA EXTREMA CO-DEPENDIENTE"
+    alert_badge_html = f"<span class='badge-alert-red'>{badge_txt}</span>"
+
+elif rain_mm >= 90.0 or q_peak_simulated >= 600.0:
+    if rain_mm >= 90.0 and q_peak_simulated < 600.0:
+        badge_txt = "NIVEL NARANJA // PRECIPITACIÓN SEVERA EN CABECERA"
+    else:
+        badge_txt = "NIVEL NARANJA // CRECIDA SIGNIFICATIVA EN CAUCE"
+    alert_badge_html = f"<span class='badge-alert-orange'>{badge_txt}</span>"
+
+elif rain_mm >= 40.0 or q_peak_simulated >= 250.0:
+    alert_badge_html = "<span class='badge-alert-yellow'>NIVEL AMARILLO // PREEMERGENCIA POR LLUVIAS</span>"
+
+else:
+    alert_badge_html = "<span class='badge-alert-green'>NIVEL VERDE // SITUACIÓN NORMAL</span>"
+
+# ==============================================================================
+# CABECERA PRINCIPAL Y TELEMETRÍA EN PANTALLA
+# ==============================================================================
+st.markdown(
+    f"""
+    <div class='hud-header'>
+        <div style='display: flex; justify-content: space-between; align-items: center;'>
+            <div>
+                <h1 style='margin:0; font-size: 1.85rem; letter-spacing: -0.02em;'>POYO-NOWCAST // GEMELO DIGITAL DE ALTA DEFINICIÓN</h1>
+                <span style='color: #8b949e; font-size: 0.82rem;'>RAMBLA DEL POYO & HORTA SUD | FÍSICA NEURONAL FNO 2D Y TRANSFERENCIA DE RIESGO SOLVENCIA II</span>
+            </div>
+            <div style='text-align: right;'>
+                {alert_badge_html}<br/>
+                <span style='font-family: "JetBrains Mono"; color: #58a6ff; font-weight:700; font-size: 0.85rem; margin-top: 4px; display: inline-block;'>HORA REF: {hour_label}</span>
+            </div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+if telemetry_active and live_obs:
+    st.markdown(
+        f"""
+        <div class='telemetry-strip'>
+            <div>📡 <b>TELEMETRÍA AEMET EN TIEMPO REAL:</b> Estación {live_obs['station_name']} ({live_obs['station_id']})</div>
+            <div>🌧️ <b>Lluvia (1 hora):</b> <span style='color:#58a6ff;'>{fmt_dec(live_obs['rain_1h_mm'], 1, ' mm')}</span></div>
+            <div>📈 <b>Acumulado (4 h):</b> <span style='color:#58a6ff;'>{fmt_dec(live_obs['rain_4h_mm'], 1, ' mm')}</span></div>
+            <div>🌡️ <b>Temperatura:</b> {fmt_dec(live_obs['temp_c'], 1, ' °C')}</div>
+            <div>⏱️ <b>UTC:</b> {live_obs['timestamp_utc']}</div>
+            <div>🟢 <span style='color:#3fb950; font-weight:700;'>SENSOR EN LÍNEA</span></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# ==============================================================================
+# KPIs OPERATIVOS TÁCTICOS (DELTAS CON SEMÁFORO DE SEGURIDAD CORREGIDO)
 # ==============================================================================
 total_exposure_m = active_df["asset_value_eur"].sum() / 1e6
 current_loss_m = active_df["active_loss"].sum() / 1e6
-total_collapsed = int((active_df["structural_collapse"] & (active_df["active_depth"] >= 0.40)).sum())
-critical_p1 = int((active_df["triage_priority"] == "P1_CRITICA").sum())
+total_collapsed = int(active_df["dynamic_collapse"].sum())
+critical_p1 = int(active_df["dynamic_p1"].sum())
 
 q_att, q_exh = 1000.0, 1800.0
 ins_att, ins_exh = 0.03, 0.12
@@ -308,50 +510,39 @@ fi = min(1.0, max(0.0, (collapse_ratio - ins_att) / (ins_exh - ins_att)))
 payout_rate = np.sqrt(fq * fi) * 100.0
 total_payout_m = 80.0 * (payout_rate / 100.0)
 
-st.markdown(
-    f"""
-    <div class='hud-header'>
-        <div style='display: flex; justify-content: space-between; align-items: center;'>
-            <div>
-                <h1 style='margin:0; font-size: 1.85rem; letter-spacing: -0.02em;'>POYO-NOWCAST // GEMELO DIGITAL DE ALTA DEFINICIÓN</h1>
-                <span style='color: #8b949e; font-size: 0.82rem;'>RAMBLA DEL POYO & HORTA SUD | SISTEMA INTEGRADO DE FÍSICA NEURONAL Y RIESGO FINANCIERO</span>
-            </div>
-            <div>
-                <span class='badge-critical'>ALERTA ROJA HIDROLÓGICA</span>
-                <span style='margin-left: 10px; font-family: "JetBrains Mono"; color: #58a6ff; font-weight:700;'>HORA: {hour_label}</span>
-            </div>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
 kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
 with kpi1:
     diff_q = q_peak_simulated - 1200
     st.metric(
         "Caudal Punta FNO",
         fmt_int(q_peak_simulated, " m³/s"),
-        delta=f"{'+' if diff_q >= 0 else ''}{fmt_int(diff_q, ' m³/s')} vs Umbral Alerta"
+        delta=f"{'+' if diff_q >= 0 else ''}{fmt_int(diff_q, ' m³/s')} vs Umbral Alerta",
+        delta_color="inverse"  # Si diff_q > 0 (peligro) se pinta ROJO; si es negativo (seguro) se pinta VERDE
     )
 with kpi2:
     pct_exp = (current_loss_m / max(0.1, total_exposure_m)) * 100
     st.metric(
         "Pérdida Directa Activa",
         fmt_dec(current_loss_m, 1, " M€"),
-        delta=f"{fmt_dec(pct_exp, 1, '%')} de Exposición"
+        delta=f"{fmt_dec(pct_exp, 1, '%')} de Exposición",
+        delta_color="inverse" if pct_exp > 0 else "off"  # Pérdida > 0 se marca en rojo
     )
 with kpi3:
-    st.metric("Inmuebles en Ruina / Colapso", fmt_int(total_collapsed), delta="InSAR DPM ≥ 0,40", delta_color="inverse")
+    st.metric("Inmuebles en Ruina", fmt_int(total_collapsed), delta="InSAR DPM ≥ 0,40", delta_color="inverse")
 with kpi4:
     st.metric("Prioridad P1 (Rescate 112)", fmt_int(critical_p1), delta="Evacuación Inmediata", delta_color="inverse")
 with kpi5:
-    st.metric("Gatillo Paramétrico (Cat Bond)", fmt_dec(payout_rate, 1, "%"), delta=f"{fmt_dec(total_payout_m, 1, ' M€')} Liberados < 48h")
+    st.metric(
+        "Gatillo Paramétrico (Cat Bond)",
+        fmt_dec(payout_rate, 1, "%"),
+        delta=f"{fmt_dec(total_payout_m, 1, ' M€')} Liberados < 48h",
+        delta_color="inverse" if payout_rate > 50.0 else "normal"
+    )
 
 st.markdown("<br/>", unsafe_allow_html=True)
 
 # ==============================================================================
-# PANELES MULTIDISCIPLINARES
+# CUERPO PRINCIPAL MULTIPANEL
 # ==============================================================================
 tab_3d, tab_hydro, tab_roads, tab_finances = st.tabs([
     "🌐 Gemelo Digital 3D (WebGPU)",
@@ -361,13 +552,28 @@ tab_3d, tab_hydro, tab_roads, tab_finances = st.tabs([
 ])
 
 # ------------------------------------------------------------------------------
-# TAB 1: VISOR 3D DECK.GL (CARTOGRAFÍA DARKMATTER Y TOOLTIPS UNIFICADOS)
+# TAB 1: VISOR 3D DECK.GL (CON LEYENDA TÁCTICA Y ESTADOS DINÁMICOS)
 # ------------------------------------------------------------------------------
 with tab_3d:
+    # Leyenda explicativa interactiva
+    st.markdown(
+        """
+        <div class='legend-box'>
+            <span style='color:#8b949e; font-weight:700;'>LEYENDA OPERATIVA C2:</span>
+            <div class='legend-item'><span class='legend-bullet' style='background:#388bfd;'></span> Edificación Urbana (Catastro LOD1)</div>
+            <div class='legend-item'><span class='legend-bullet' style='background:#da3633;'></span> Ruina / Colapso InSAR DPM</div>
+            <div class='legend-item'><span class='legend-bullet' style='background:#238636;'></span> Vía Operativa / Evacuación</div>
+            <div class='legend-item'><span class='legend-bullet' style='background:#d73a49;'></span> Vía Cortada (Calado o Intradós)</div>
+            <div class='legend-item'><span class='legend-bullet' style='background:#58a6ff; border-radius:50%;'></span> Hospital Terciario</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     h_vals = active_df["active_depth"].to_numpy()
-    c_vals = active_df["structural_collapse"].to_numpy()
+    c_vals = active_df["dynamic_collapse"].to_numpy()
     l_vals = active_df["active_loss"].to_numpy()
-    t_vals = active_df["triage_priority"].astype(str).to_numpy()
+    p1_vals = active_df["dynamic_p1"].to_numpy()
 
     if render_variable == "Calado Hidrodinámico FNO (m)":
         conds = [c_vals, h_vals >= 1.5, h_vals >= 0.5, h_vals >= 0.1]
@@ -390,14 +596,14 @@ with tab_3d:
         fallback_c = [50, 50, 50, 80]
         extrusions = (l_vals / 4500.0) + 4.0
     else:
-        conds = [t_vals == "P1_CRITICA", t_vals == "P2_ALTA", t_vals == "P3_MODERADA"]
+        conds = [p1_vals, h_vals >= 0.8, h_vals >= 0.3]
         palette = [
-            [218, 54, 51, 240],
-            [210, 153, 34, 200],
-            [227, 179, 65, 170],
+            [218, 54, 51, 240],   # P1 Rojo
+            [210, 153, 34, 200],  # P2 Naranja
+            [227, 179, 65, 170],  # P3 Amarillo
         ]
-        fallback_c = [46, 160, 67, 120]
-        extrusions = np.where(t_vals == "P1_CRITICA", 50.0, 8.0)
+        fallback_c = [46, 160, 67, 120] # P4 Normal
+        extrusions = np.where(p1_vals, 50.0, np.where(h_vals >= 0.3, 15.0, 4.0))
 
     rgb_arr = np.full((len(active_df), 4), fallback_c, dtype=np.uint8)
     for c, col in zip(conds, palette):
@@ -408,7 +614,7 @@ with tab_3d:
     active_df["layer_title"] = active_df["parcel_id"] + " (" + active_df["municipality"] + ")"
     active_df["metric_primary"] = "Calado: " + active_df["active_depth"].apply(lambda v: fmt_dec(v, 2, " m"))
     active_df["metric_secondary"] = "Pérdida CCS: " + active_df["active_loss"].apply(lambda v: fmt_dec(v, 0, " €"))
-    active_df["status_tag"] = active_df["triage_priority"].astype(str)
+    active_df["status_tag"] = np.where(p1_vals, "P1_CRITICA", np.where(h_vals >= 0.8, "P2_ALTA", np.where(h_vals >= 0.3, "P3_MODERADA", "P4_NORMAL")))
 
     deck_layers = [
         pdk.Layer(
@@ -424,21 +630,29 @@ with tab_3d:
         )
     ]
 
+    # Red viaria: transitabilidad dinámica en función de si hay agua
     if show_roads and network_geojson:
         road_paths = []
         for feat in network_geojson.get("features", []):
             if feat["geometry"]["type"] == "LineString":
                 p = feat["properties"]
-                active_edge = p.get("is_active", True)
-                col = [46, 160, 67, 210] if active_edge else [218, 54, 51, 250]
+                # Si el río está seco, todas las vías están transitables (excepto ruina InSAR si la hubiera)
+                if current_depth_factor < 0.08:
+                    edge_open = True
+                    reason = "OPERATIVO (SECO)"
+                else:
+                    edge_open = p.get("is_active", True)
+                    reason = p.get("failure_reason", "CORTADO")
+
+                col = [46, 160, 67, 210] if edge_open else [218, 54, 51, 250]
                 road_paths.append({
                     "path": feat["geometry"]["coordinates"],
                     "layer_title": p.get("name", "Vía de Comunicación"),
                     "metric_primary": f"Longitud: {fmt_int(p.get('length_m', 0.0), ' m')}",
-                    "metric_secondary": f"Calado en Eje: {fmt_dec(p.get('h_water_m', 0.0), 2, ' m')}",
-                    "status_tag": "OPERATIVO" if active_edge else p.get("failure_reason", "CORTADO"),
+                    "metric_secondary": f"Calado en Eje: {fmt_dec(p.get('h_water_m', 0.0) * current_depth_factor, 2, ' m')}",
+                    "status_tag": "OPERATIVO" if edge_open else reason,
                     "color": col,
-                    "width": 4 if active_edge else 8,
+                    "width": 4 if edge_open else 8,
                 })
         deck_layers.append(
             pdk.Layer(
@@ -453,19 +667,43 @@ with tab_3d:
             )
         )
 
+    # Hospitales: estado y color sincronizados dinámicamente con el caudal
     if show_hospitals:
-        hosp_df = pd.DataFrame(HOSPITALS_WGS84)
-        hosp_df["layer_title"] = hosp_df["name"]
-        hosp_df["metric_primary"] = "Capacidad: " + hosp_df["beds"].astype(str) + " camas"
-        hosp_df["metric_secondary"] = "Rol: Hospital Terciario"
-        hosp_df["status_tag"] = hosp_df["status"]
+        hosp_data = []
+        for h in [
+            {"name": "H. Universitari i Politècnic La Fe", "lon": -0.3768, "lat": 39.4435, "beds": 1000},
+            {"name": "H. General Universitari de València", "lon": -0.4072, "lat": 39.4682, "beds": 550},
+            {"name": "Hospital de Manises", "lon": -0.4608, "lat": 39.4930, "beds": 240},
+        ]:
+            if q_peak_simulated < 300.0:
+                h_status = "OPERATIVO (NORMAL)"
+                h_col = [56, 139, 253, 230]
+            elif q_peak_simulated < 1200.0:
+                h_status = "PREALERTA SANITARIA"
+                h_col = [210, 153, 34, 230]
+            else:
+                h_status = "ALERTA MÁXIMA / SATURACIÓN"
+                h_col = [218, 54, 51, 240]
+
+            hosp_data.append({
+                "name": h["name"],
+                "lon": h["lon"],
+                "lat": h["lat"],
+                "layer_title": h["name"],
+                "metric_primary": f"Capacidad: {h['beds']} camas",
+                "metric_secondary": "Rol: Hospital Terciario",
+                "status_tag": h_status,
+                "color": h_col
+            })
+
+        hosp_df = pd.DataFrame(hosp_data)
         deck_layers.append(
             pdk.Layer(
                 "ScatterplotLayer",
                 data=hosp_df,
                 get_position=["lon", "lat"],
-                get_color=[88, 166, 255, 230],
-                get_radius=180,
+                get_color="color",
+                get_radius=200,
                 pickable=True,
             )
         )
@@ -479,7 +717,7 @@ with tab_3d:
                 get_color=[240, 246, 252, 255],
                 get_text_anchor="'start'",
                 get_alignment_baseline="'center'",
-                pixel_offset=[15, 0],
+                pixel_offset=[18, 0],
             )
         )
 
@@ -523,8 +761,8 @@ with tab_hydro:
     with col_h1:
         st.subheader("Hidrograma Transitorio de la Avenida (Rambla del Poyo)")
         t_steps = np.linspace(0, 360, 60)
-        q_envelope = 1950.0 * np.exp(-((t_steps - 210) ** 2) / (2 * 45 ** 2))
-        q_envelope[:12] = np.linspace(50, 250, 12)
+        q_envelope = q_peak_simulated * np.exp(-((t_steps - 210) ** 2) / (2 * 45 ** 2))
+        q_envelope[:12] = np.linspace(min(50, q_peak_simulated * 0.1), min(250, q_peak_simulated * 0.3), 12)
         
         fig_hydro = go.Figure()
         fig_hydro.add_trace(go.Scatter(
@@ -580,23 +818,24 @@ with tab_roads:
         active_df.groupby("municipality")
         .agg(
             tti_med=("time_to_isolation_min", "median"),
-            pct_isolated=("is_isolated", lambda s: float(np.mean(s)) * 100.0),
+            pct_isolated=("is_isolated", lambda s: float(np.mean(s)) * 100.0 if current_depth_factor > 0.08 else 0.0),
             parcels=("parcel_id", "count"),
-            p1_urgente=("triage_priority", lambda s: int(np.sum(s == "P1_CRITICA")))
+            p1_urgente=("dynamic_p1", lambda s: int(np.sum(s)))
         )
         .reset_index()
     )
     
-    tti_metrics["TTI_Label"] = tti_metrics["tti_med"].apply(
-        lambda val: f"{int(round(val))} min" if pd.notnull(val) and np.isfinite(val) else "Resiliente (> 120 min)"
+    tti_metrics["TTI_Label"] = tti_metrics.apply(
+        lambda r: f"{int(round(r['tti_med']))} min" if pd.notnull(r['tti_med']) and np.isfinite(r['tti_med']) and r['pct_isolated'] > 0 else "Resiliente (> 120 min)",
+        axis=1
     )
     
     def categorizar_alerta(row):
-        tti = row["tti_med"]
         pct = row["pct_isolated"]
-        if pct >= 30.0 or (pd.notnull(tti) and tti <= 25.0):
+        tti = row["tti_med"]
+        if pct >= 30.0 or (pct > 0 and pd.notnull(tti) and tti <= 25.0):
             return "🔴 AISLAMIENTO TOTAL"
-        elif pct >= 10.0 or (pd.notnull(tti) and tti <= 45.0):
+        elif pct >= 10.0 or (pct > 0 and pd.notnull(tti) and tti <= 45.0):
             return "🟠 RUTA EN RIESGO / ALERTA"
         return "🟢 CONECTIVIDAD ACTIVA"
 
@@ -637,7 +876,7 @@ with tab_finances:
     scr_current = max(0.0, current_loss_m * 1.35 - (current_loss_m * 0.042))
     coc_current = 0.06 * scr_current
     
-    # 1. Dashboard Superior: Tabla QRT + Cascada de Financiación
+    # 1. Fila Superior: Balance QRT + Cascada
     f_col1, f_col2 = st.columns([1.2, 1.8])
     
     with f_col1:
@@ -653,20 +892,20 @@ with tab_finances:
         st.dataframe(solv_table, use_container_width=True, hide_index=True)
         
     with f_col2:
-        st.markdown("#### Cascada de Absorción de Pérdidas")
+        st.markdown("#### Cascada de Financiación de la Catástrofe")
         val_ccs = current_loss_m * 0.72
         val_param = min(current_loss_m * 0.28, total_payout_m)
         val_gap = max(0.0, current_loss_m - (val_ccs + val_param))
         
-        fig_waterfall = go.Figure(go.Waterfall(
-            orientation="v",
-            measure=["relative", "relative", "relative", "total"],
+        fig_waterfall = go.Figure(go.Bar(
             x=["Consorcio (CCS)", "Cat Bond Paramétrico", "Brecha No Cubierta", "Pérdida Total"],
             y=[val_ccs, val_param, val_gap, current_loss_m],
-            connector={"line": {"color": "#30363d"}},
-            decreasing={"marker": {"color": "#238636"}},
-            increasing={"marker": {"color": "#238636"}},
-            totals={"marker": {"color": "#da3633"}}
+            marker=dict(
+                color=["#238636", "#1f6feb", "#d29922", "#da3633"],
+                line=dict(color="#30363d", width=1.5)
+            ),
+            text=[fmt_dec(v, 1, " M€") for v in [val_ccs, val_param, val_gap, current_loss_m]],
+            textposition="auto"
         ))
         fig_waterfall.update_layout(
             template="plotly_dark",
@@ -678,9 +917,9 @@ with tab_finances:
         )
         st.plotly_chart(fig_waterfall, use_container_width=True)
 
-    st.markdown("---")
+    st.markdown("<br/>", unsafe_allow_html=True)
 
-    # 2. Curva EP (XoL) y Matriz 2D Dual-Trigger (cat_modeling.r)
+    # 2. Fila Media: Curva EP y Matriz 2D Dual-Trigger
     f_col3, f_col4 = st.columns(2)
 
     with f_col3:
@@ -725,12 +964,13 @@ with tab_finances:
 
     with f_col4:
         st.markdown("#### Matriz de Disparo Paramétrico (Dual-Trigger Surface)")
+        
         q_grid = np.linspace(800, 2000, 40)
-        insar_grid = np.linspace(0.0, 15.0, 40)
+        insar_grid = np.linspace(0.0, 32.0, 40)
         Q_mesh, I_mesh = np.meshgrid(q_grid, insar_grid)
 
         fq_mesh = np.clip((Q_mesh - 1000.0) / 800.0, 0.0, 1.0)
-        fi_mesh = np.clip((I_mesh - 3.0) / 9.0, 0.0, 1.0)
+        fi_mesh = np.clip((I_mesh - 3.0) / 12.0, 0.0, 1.0)
         payout_surface = np.sqrt(fq_mesh * fi_mesh) * 100.0
 
         fig_matrix = go.Figure()
@@ -741,9 +981,9 @@ with tab_finances:
             contours=dict(showlabels=True, labelfont=dict(size=10, color="white"))
         ))
         
-        current_insar_pct = collapse_ratio * 100.0
+        current_insar_pct = min(30.0, collapse_ratio * 100.0)
         fig_matrix.add_trace(go.Scatter(
-            x=[q_peak_simulated], y=[current_insar_pct],
+            x=[min(2000.0, max(800.0, q_peak_simulated))], y=[current_insar_pct],
             mode='markers+text',
             marker=dict(color='#ff0055', size=14, symbol='diamond', line=dict(color='white', width=2)),
             text=[f"ACTIVO: {fmt_dec(payout_rate, 1, '%')}"],
@@ -757,15 +997,16 @@ with tab_finances:
             paper_bgcolor="#0d1117",
             xaxis_title="Caudal Punta FNO (m³/s)",
             yaxis_title="Colapso Físico InSAR (%)",
+            yaxis=dict(range=[0, 32]),
             showlegend=False,
             margin=dict(l=40, r=40, t=40, b=40),
             height=340
         )
         st.plotly_chart(fig_matrix, use_container_width=True)
 
-    st.markdown("---")
+    st.markdown("<br/>", unsafe_allow_html=True)
 
-    # 3. Proyección Decenal del Riesgo Climático (2024 - 2050)
+    # 3. Proyección Decenal del Riesgo Climático
     st.markdown("#### Proyección Decenal del Riesgo Climático & Coste de Solvencia (2024 - 2050)")
     
     decadas = np.array([2024, 2030, 2035, 2040, 2045, 2050])
@@ -777,6 +1018,11 @@ with tab_finances:
     scr_ssp5 = scr_current * factor_ssp5
 
     fig_future = go.Figure()
+    fig_future.add_trace(go.Bar(
+        x=decadas, y=scr_ssp5, name="Capital de Solvencia Requerido (SCR SSP5-8.5)",
+        marker=dict(color="rgba(31, 111, 235, 0.25)", line=dict(color="#388bfd", width=1.5)),
+        yaxis="y2"
+    ))
     fig_future.add_trace(go.Scatter(
         x=decadas, y=aal_ssp2, mode="lines+markers",
         name="AAL (Senda Intermedia SSP2-4.5)",
@@ -786,10 +1032,6 @@ with tab_finances:
         x=decadas, y=aal_ssp5, mode="lines+markers",
         name="AAL (Senda Pesimista SSP5-8.5)",
         line=dict(color="#cf222e", width=2.5, dash="dash")
-    ))
-    fig_future.add_trace(go.Bar(
-        x=decadas, y=scr_ssp5, name="Capital de Solvencia Requerido (SCR SSP5-8.5)",
-        marker_color="rgba(110, 118, 129, 0.25)", yaxis="y2"
     ))
 
     fig_future.update_layout(
