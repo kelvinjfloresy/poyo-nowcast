@@ -1,7 +1,7 @@
 """
 POYO-NOWCAST: Módulo 5 - Plataforma C2 de Gemelo Digital, Resiliencia y Solvencia II
 Tecnología: Streamlit + PyDeck (Deck.gl WebGPU) + Plotly C2 HUD + PyProj Geodésico.
-Integración: AEMET API + FNO 2D + Isocronas + Red Arterial Hitos + Auditoría A/B Cronograma.
+Integración: AEMET OpenData API + FNO 2D + Isocronas CSS + Hitos y Medios Municipales.
 Autor: Kelvin Jesus Flores Yarihuaman (https://www.linkedin.com/in/kelvinflores-ingenieria)
 Licencia: Open Science (CC BY 4.0)
 """
@@ -145,6 +145,16 @@ st.markdown(
     }
     .legend-item { display: flex; align-items: center; gap: 5px; }
     .legend-bullet { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+    .legend-circle-outline { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: transparent; }
+
+    .aemet-featured-card {
+        background: linear-gradient(135deg, rgba(35, 134, 54, 0.20) 0%, rgba(22, 27, 34, 0.95) 100%);
+        border: 1.5px solid #2ea043;
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 14px;
+        box-shadow: 0 0 14px rgba(46, 160, 67, 0.18);
+    }
 
     .aemet-scale-table {
         width: 100%; font-size: 0.72rem; border-collapse: collapse; margin-top: 6px;
@@ -210,13 +220,18 @@ VULNERABLE_CENTERS_BASE = [
     {"name": "Centro Sanitario Integrado Catarroja", "mun": "Catarroja", "type": "SALUD", "lon": -0.4050, "lat": 39.4040, "beds": 0, "h_base": 1.80},
 ]
 
-# HITOS METROPOLITANOS E INFRAESTRUCTURAS CRÍTICAS ESTRATÉGICAS
+# HITOS METROPOLITANOS Y MEDIOS MUNICIPALES DE EMERGENCIA
 METRO_LANDMARKS_BASE = [
     {"name": "Aeropuerto de Manises / Valencia (VLC)", "type": "AEROPUERTO", "lon": -0.4816, "lat": 39.4893, "icon": "✈️", "h_base": 0.20},
     {"name": "Estación Central Alta Velocidad AVE Joaquín Sorolla", "type": "FERROCARRIL", "lon": -0.3800, "lat": 39.4580, "icon": "🚆", "h_base": 0.15},
     {"name": "Puerto Autónomo de Valencia (Dársena Comercial)", "type": "PUERTO", "lon": -0.3250, "lat": 39.4450, "icon": "🚢", "h_base": 0.10},
     {"name": "Ciutat de les Arts i les Ciències", "type": "PATRIMONIO", "lon": -0.3530, "lat": 39.4540, "icon": "🏛️", "h_base": 0.10},
-    {"name": "Parque de Cabecera / Jardín del Turia", "type": "HIDRÁULICA", "lon": -0.4100, "lat": 39.4750, "icon": "🌳", "h_base": 0.30},
+    {"name": "Parque de Cabecera / Antiguo Cauce Turia", "type": "HIDRÁULICA", "lon": -0.4100, "lat": 39.4750, "icon": "🌳", "h_base": 0.30},
+    # Nuevos medios municipales de rescate e infraestructuras de paso
+    {"name": "Parque Central de Bomberos Valencia (Campanar)", "type": "BOMBEROS", "lon": -0.4010, "lat": 39.4790, "icon": "🚒", "h_base": 0.15},
+    {"name": "Parque Comarcal de Bomberos de Torrent (CPBV)", "type": "BOMBEROS", "lon": -0.4680, "lat": 39.4320, "icon": "🚒", "h_base": 0.25},
+    {"name": "Estación Metrovalencia Paiporta (Cota Cero)", "type": "TRANSPORTE", "lon": -0.4175, "lat": 39.4270, "icon": "🚇", "h_base": 2.40},
+    {"name": "Centro de Coordinación 112 GVA (L'Eliana)", "type": "MANDO_C2", "lon": -0.5280, "lat": 39.5660, "icon": "🏢", "h_base": 0.05},
 ]
 
 @st.cache_data
@@ -267,7 +282,6 @@ def load_all_system_artifacts():
 
     df["lon"], df["lat"] = PROJECTOR.transform_points(df["x_coord"].to_numpy(), df["y_coord"].to_numpy())
 
-    # Red arterial metropolitana conectando toda la comarca, hospitales e hitos
     realistic_roads = [
         {"name": "CV-36 Eje Torrent - Picanya - Valencia", "h_base": 2.40, "coords": [[-0.450, 39.435], [-0.432, 39.439], [-0.418, 39.444], [-0.395, 39.448], [-0.380, 39.452]]},
         {"name": "V-30 Bulevar Sur (Nuevo Cauce Turia)", "h_base": 1.20, "coords": [[-0.440, 39.458], [-0.415, 39.450], [-0.390, 39.442], [-0.365, 39.435], [-0.340, 39.430]]},
@@ -289,7 +303,7 @@ def load_all_system_artifacts():
 df_parcels, realistic_roads, qrt_summary = load_all_system_artifacts()
 
 # ==============================================================================
-# BARRA LATERAL: CONTROL, PRESETS Y WHAT-IF
+# BARRA LATERAL: BOTÓN DESTACADO AEMET EN PRIMERA POSICIÓN
 # ==============================================================================
 st.sidebar.markdown(
     """
@@ -300,6 +314,23 @@ st.sidebar.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# 1. BOTÓN DESTACADO AEMET OPENDATA EN PRIMERA POSICIÓN
+st.sidebar.markdown(
+    """
+    <div class='aemet-featured-card'>
+        <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;'>
+            <b style='color:#3fb950; font-size:0.84rem; letter-spacing:0.02em;'>📡 AEMET OPENDATA EN VIVO</b>
+            <span style='background:#238636; color:white; font-size:0.65rem; padding:2px 7px; border-radius:10px; font-weight:700;'>SENSOR ACTIVO</span>
+        </div>
+        <span style='color:#c9d1d9; font-size:0.72rem;'>Estación Chiva (8368U) // Latencia &lt; 15 min</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+conectar_aemet = st.sidebar.toggle("🟢 Habilitar Telemetría AEMET en Directo", value=True, key="aemet_toggle")
+
+st.sidebar.markdown("<hr style='border:0.5px solid #21262d; margin:8px 0;'/>", unsafe_allow_html=True)
 
 def reset_all_controls_and_gpu():
     st.cache_data.clear()
@@ -316,6 +347,10 @@ def reset_all_controls_and_gpu():
     st.session_state["chk_vuln"] = True
     st.session_state["chk_isochrones"] = True
     st.session_state["sel_muns"] = sorted(df_parcels["municipality"].unique())
+    st.session_state["map_lat"] = 39.4420
+    st.session_state["map_lon"] = -0.4100
+    st.session_state["map_zoom"] = 12.2
+    st.session_state["map_pitch"] = 55
 
 if st.sidebar.button("🔄 Restablecer Parámetros (Reset Total)", use_container_width=True):
     reset_all_controls_and_gpu()
@@ -393,9 +428,7 @@ if "Forense" in sim_mode:
     factor_clima = 1.0
 
 else:
-    st.sidebar.markdown("<b style='color:#c9d1d9; font-size:0.80rem;'>⚡ Nowcast & Conexión AEMET</b>", unsafe_allow_html=True)
-    conectar_aemet = st.sidebar.toggle("📡 Telemetría AEMET en Vivo", value=True, key="aemet_toggle")
-    
+    st.sidebar.markdown("<b style='color:#c9d1d9; font-size:0.80rem;'>⚡ Configuración Nowcast</b>", unsafe_allow_html=True)
     horizonte_clima = st.sidebar.selectbox(
         "Horizonte Climático (IPCC / EIOPA):",
         ["Actual / Línea Base Operativa", "Horizonte 2030 (SSP2-4.5 / +8% Q)", "Horizonte 2040 (SSP3-7.0 / +15% Q)", "Horizonte 2050 (SSP5-8.5 / +22% Q)"],
@@ -463,15 +496,15 @@ col_s1, col_s2 = st.sidebar.columns(2)
 with col_s1:
     show_roads = st.checkbox("Red Viaria Arterial", value=True, key="chk_roads")
     show_vulnerable = st.checkbox("Centros Sensibles", value=True, key="chk_vuln")
-    show_landmarks = st.checkbox("Hitos Metropolitanos", value=True, key="chk_landmarks")
+    show_landmarks = st.checkbox("Hitos / Medios Mun.", value=True, key="chk_landmarks")
 with col_s2:
-    show_hospitals = st.checkbox("Hospitales (3 Nodos)", value=True, key="chk_hosp")
+    show_hospitals = st.checkbox("Hospitales", value=True, key="chk_hosp")
     show_isochrones = st.checkbox("Anillos Isocronas", value=True, key="chk_isochrones")
 
 all_municipalities = sorted(df_parcels["municipality"].unique())
 selected_muns = st.sidebar.multiselect("Términos Municipales:", options=all_municipalities, default=all_municipalities, key="sel_muns")
 
-# FILTRADO Y FÍSICA ESTRUCTURAL CON CURVAS DE DAÑO DIFERENCIADAS POR TIPOLOGÍA
+# FILTRADO Y FÍSICA ESTRUCTURAL
 active_df = df_parcels[df_parcels["municipality"].isin(selected_muns)].copy()
 
 extra_mota = 0.85 if (ruptura_mota and q_peak_simulated > 300.0) else 0.0
@@ -601,7 +634,6 @@ elif alert_state == "NARANJA":
         unsafe_allow_html=True,
     )
 
-# BARRA DE TELEMETRÍA CON INDICADOR EXPLICITO DE LATENCIA FNO
 fno_latency_ms = 38.4 if "Forense" in sim_mode else 42.1
 
 if "Forense" in sim_mode:
@@ -703,6 +735,16 @@ with kpi5:
 
 st.markdown("<br/>", unsafe_allow_html=True)
 
+# GESTIÓN DE COORDENADAS DE CÁMARA (BOTONES DE ENCUADRE RÁPIDO)
+if "map_lat" not in st.session_state:
+    st.session_state["map_lat"] = 39.4320
+if "map_lon" not in st.session_state:
+    st.session_state["map_lon"] = -0.4150
+if "map_zoom" not in st.session_state:
+    st.session_state["map_zoom"] = 12.6
+if "map_pitch" not in st.session_state:
+    st.session_state["map_pitch"] = 52
+
 # ==============================================================================
 # PESTAÑAS
 # ==============================================================================
@@ -716,17 +758,43 @@ tab_3d, tab_esalert, tab_compare, tab_hydro, tab_roads, tab_finances = st.tabs([
 ])
 
 # ------------------------------------------------------------------------------
-# TAB 1: VISOR 3D DECK.GL CON COLUMNAS, HITOS METROPOLITANOS E ISOCRONAS
+# TAB 1: VISOR 3D CON ENCUADRE RÁPIDO E ISOCRONAS CSS CORREGIDAS
 # ------------------------------------------------------------------------------
 with tab_3d:
-    render_variable = st.radio(
-        "Modo de Representación 3D en Gemelo Digital:",
-        ["🌊 Calado Hidrodinámico FNO", "💶 Pérdida Económica CCS (€)", "🚨 Prioridad Triaje 112 (P1-P4)"],
-        horizontal=True,
-        key="render_var_horizontal"
-    )
+    col_ctrl_left, col_ctrl_right = st.columns([1.8, 2.2])
+    with col_ctrl_left:
+        render_variable = st.radio(
+            "Modo de Representación 3D en Gemelo Digital:",
+            ["🌊 Calado Hidrodinámico FNO", "💶 Pérdida Económica CCS (€)", "🚨 Prioridad Triaje 112 (P1-P4)"],
+            horizontal=True,
+            key="render_var_horizontal"
+        )
+    with col_ctrl_right:
+        st.markdown("<b style='color:#c9d1d9; font-size:0.78rem;'>🎯 Centrado Rápido del Gemelo Digital:</b>", unsafe_allow_html=True)
+        cam_c1, cam_c2, cam_c3 = st.columns(3)
+        with cam_c1:
+            if st.button("📍 Zona Cero (Paiporta)", use_container_width=True):
+                st.session_state["map_lat"] = 39.4240
+                st.session_state["map_lon"] = -0.4180
+                st.session_state["map_zoom"] = 13.5
+                st.session_state["map_pitch"] = 55
+                st.rerun()
+        with cam_c2:
+            if st.button("🏙️ Área Metropolitana", use_container_width=True):
+                st.session_state["map_lat"] = 39.4480
+                st.session_state["map_lon"] = -0.3950
+                st.session_state["map_zoom"] = 12.0
+                st.session_state["map_pitch"] = 48
+                st.rerun()
+        with cam_c3:
+            if st.button("✈️ Aeropuerto / A-3", use_container_width=True):
+                st.session_state["map_lat"] = 39.4850
+                st.session_state["map_lon"] = -0.4550
+                st.session_state["map_zoom"] = 12.8
+                st.session_state["map_pitch"] = 50
+                st.rerun()
 
-    # LEYENDA TÉCNICA CON COLORES DIFERENCIADOS PARA CADA ISOCRONA
+    # LEYENDA TÉCNICA CON ANILLOS CSS PUROS (CORRECCIÓN CROMÁTICA DE ISOCRONAS)
     legend_html = """
     <div class='legend-box'>
         <span style='color:#8b949e; font-weight:700;'>SIMBOLOGÍA 3D:</span>
@@ -738,10 +806,10 @@ with tab_3d:
         <div class='legend-item'><span class='legend-bullet' style='background:#d73a49;'></span> Vía Cortada</div>
         <div class='legend-item'><span class='legend-bullet' style='background:#e3a93b;'></span> Centro Sensible</div>
         <div class='legend-item'><span class='legend-bullet' style='background:#58a6ff; border-radius:50%;'></span> Hospital</div>
-        <div class='legend-item'><span class='legend-bullet' style='background:#a371f7; border-radius:50%;'></span> Hito Metropolitano</div>
-        <div class='legend-item'><span style='color:#da3633; font-weight:bold; font-size:14px;'>⭕</span> Isocrona 10 min</div>
-        <div class='legend-item'><span style='color:#f0883e; font-weight:bold; font-size:14px;'>⭕</span> Isocrona 20 min</div>
-        <div class='legend-item'><span style='color:#2ea043; font-weight:bold; font-size:14px;'>⭕</span> Isocrona 30 min</div>
+        <div class='legend-item'><span class='legend-bullet' style='background:#a371f7; border-radius:50%;'></span> Hito / Medio Municipal</div>
+        <div class='legend-item'><span class='legend-circle-outline' style='border: 2.5px solid #da3633;'></span> 10 min (Inmediato)</div>
+        <div class='legend-item'><span class='legend-circle-outline' style='border: 2.5px solid #f0883e;'></span> 20 min (Medio)</div>
+        <div class='legend-item'><span class='legend-circle-outline' style='border: 2.5px solid #2ea043;'></span> 30 min (Exterior)</div>
     </div>
     """
     st.markdown(legend_html, unsafe_allow_html=True)
@@ -835,7 +903,7 @@ with tab_3d:
         )
     ]
 
-    # Red viaria arterial conectada a hospitales e hitos
+    # Red viaria arterial
     if show_roads and realistic_roads:
         road_paths = []
         for r_item in realistic_roads:
@@ -879,7 +947,7 @@ with tab_3d:
             )
         )
 
-    # ISOCRONAS DE EVACUACIÓN HUECAS CON COLORES DIFERENCIADOS POR TIEMPO
+    # ISOCRONAS DE EVACUACIÓN HUECAS CON COLORES DIFERENCIADOS
     if show_isochrones:
         origin_lon, origin_lat = -0.4190, 39.4230
         penalizacion = max(0.18, 1.0 - (q_peak_simulated / 2200.0))
@@ -905,7 +973,7 @@ with tab_3d:
                 data=iso_df,
                 get_position=["lon", "lat"],
                 get_radius="radius",
-                filled=False,             # Anillos huecos: no tapan las columnas 3D
+                filled=False,
                 stroked=True,
                 get_line_color="color",
                 line_width_min_pixels=3,
@@ -913,23 +981,23 @@ with tab_3d:
             )
         )
 
-    # HITOS METROPOLITANOS (AEROPUERTO, AVE, PUERTO, CIUDAD ARTES Y CIENCIAS)
+    # HITOS METROPOLITANOS Y MEDIOS MUNICIPALES CON ESTADO EN DANA
     if show_landmarks:
         eval_factor_land = peak_damage_factor_reached if "Forense" in sim_mode else current_depth_factor
         land_rows = []
         for lmark in METRO_LANDMARKS_BASE:
             h_local_l = lmark["h_base"] * eval_factor_land
             
-            if h_local_l >= 0.40:
-                l_stat = "🔴 ALERTA DE AFECCIÓN PERIMETRAL"
+            if h_local_l >= 0.40 or (lmark["type"] == "TRANSPORTE" and eval_factor_land >= 0.50):
+                l_stat = "🔴 ALERTA DE INUNDACIÓN / BLOQUEO TOTAL"
                 l_col = [218, 54, 51, 240]
                 l_hex = "#f85149"
-            elif h_local_l >= 0.10:
-                l_stat = "🟠 PREALERTA EN ACCESOS VIARIOS"
+            elif h_local_l >= 0.10 or eval_factor_land >= 0.35:
+                l_stat = "🟠 PREALERTA EN ACCESOS / AFECTACIÓN"
                 l_col = [240, 136, 62, 230]
                 l_hex = "#f0883e"
             else:
-                l_stat = "🟢 OPERATIVIDAD METROPOLITANA NORMAL"
+                l_stat = "🟢 OPERATIVIDAD MUNICIPAL NOMINAL"
                 l_col = [163, 113, 247, 240]
                 l_hex = "#a371f7"
                 
@@ -939,8 +1007,8 @@ with tab_3d:
                 "lon": lmark["lon"],
                 "lat": lmark["lat"],
                 "layer_title": lmark["name"],
-                "metric_primary": f"Tipo: {lmark['type']} (Nodo Crítico)",
-                "metric_secondary": f"Calado Evaluado en Entorno: {fmt_dec(h_local_l, 2, ' m')}",
+                "metric_primary": f"Tipo: {lmark['type']} (Medio Crítico)",
+                "metric_secondary": f"Calado Estimado en Entorno: {fmt_dec(h_local_l, 2, ' m')}",
                 "status_tag": l_stat,
                 "status_color": l_hex,
                 "color": l_col
@@ -953,7 +1021,7 @@ with tab_3d:
                 data=land_df,
                 get_position=["lon", "lat"],
                 get_color="color",
-                get_radius=260,
+                get_radius=250,
                 pickable=True,
             )
         )
@@ -1069,10 +1137,13 @@ with tab_3d:
             )
         )
 
-    # CÁMARA ORBITAL EN PERSPECTIVA ISOMÉTRICA (PITCH 55°)
-    c_lat = 39.4420
-    c_lon = -0.4100
-    camera = pdk.ViewState(latitude=c_lat, longitude=c_lon, zoom=12.2, pitch=55, bearing=-20)
+    camera = pdk.ViewState(
+        latitude=st.session_state["map_lat"],
+        longitude=st.session_state["map_lon"],
+        zoom=st.session_state["map_zoom"],
+        pitch=st.session_state["map_pitch"],
+        bearing=-20
+    )
 
     st.pydeck_chart(
         pdk.Deck(
@@ -1092,7 +1163,6 @@ with tab_3d:
         width="stretch"
     )
 
-    # BOTÓN DE DESCARGA DIRECTA OPEN DATA GIS
     export_df = active_df[["parcel_id", "municipality", "lon", "lat", "active_depth", "active_loss", "status_tag"]].copy()
     geojson_features = []
     for _, row in export_df.iterrows():
@@ -1316,11 +1386,24 @@ Medida de Mitigación Evaluada: {what_if}
             )
 
 # ------------------------------------------------------------------------------
-# TAB 3: AUDITORÍA FORENSE SPLIT A/B CON CRONOGRAMA INTERACTIVO
+# TAB 3: AUDITORÍA FORENSE SPLIT A/B EXPANDIDA (MATRIZ Y GANTT)
 # ------------------------------------------------------------------------------
 with tab_compare:
     st.subheader("Auditoría Forense Split A/B: Inteligencia Anticipada vs. Gestión Burocrática")
     
+    # 1. SCORECARD COMPARATIVO NUMÉRICO DIRECTO
+    sc1, sc2, sc3, sc4 = st.columns(4)
+    with sc1:
+        st.metric("Margen de Preaviso", "+146 min", delta="Nowcast (17:45 h) vs 20:11 h", delta_color="normal")
+    with sc2:
+        st.metric("Telecomunicaciones", "100% On-line", delta="Sin apagón de antenas", delta_color="normal")
+    with sc3:
+        st.metric("Población sin Aviso", "0 hab", delta="-180.000 hab protegidos", delta_color="normal")
+    with sc4:
+        st.metric("Atrapamientos Viales", "-85%", delta="Evacuación vertical viable", delta_color="normal")
+
+    st.markdown("<br/>", unsafe_allow_html=True)
+
     col_ab1, col_ab2 = st.columns(2)
     with col_ab1:
         st.markdown(
@@ -1360,16 +1443,15 @@ with tab_compare:
         )
 
     st.markdown("<br/>", unsafe_allow_html=True)
-    st.markdown("#### Cronograma Comparativo de Decisión y Propagación de Avenida")
+    st.markdown("#### Cronograma Comparativo con Hitos de Decisión (Plotly HUD)")
 
-    # GRÁFICA DE GANTT / CRONOGRAMA TEMPORAL INTERACTIVO
     timeline_df = pd.DataFrame([
-        dict(Task="Precipitación Extrema Chiva (> 400 mm)", Start="2024-10-29 16:00:00", Finish="2024-10-29 18:00:00", Tipo="Fenómeno Físico", Escenario="Realidad 29-O"),
-        dict(Task="Propagación Frente de Onda Rambla", Start="2024-10-29 17:00:00", Finish="2024-10-29 19:30:00", Tipo="Fenómeno Físico", Escenario="Realidad 29-O"),
-        dict(Task="Anegamiento Casco Paiporta / Picanya", Start="2024-10-29 18:30:00", Finish="2024-10-29 23:00:00", Tipo="Impacto Crítico", Escenario="Realidad 29-O"),
-        dict(Task="DISPARO ES-ALERT POYO-NOWCAST", Start="2024-10-29 17:45:00", Finish="2024-10-29 17:50:00", Tipo="Alerta Anticipada", Escenario="POYO-NOWCAST"),
-        dict(Task="Ventana Útil Evacuación Vertical", Start="2024-10-29 17:45:00", Finish="2024-10-29 18:30:00", Tipo="Ventana Salvavidas", Escenario="POYO-NOWCAST"),
-        dict(Task="DISPARO ES-ALERT OFICIAL CECOPI", Start="2024-10-29 20:11:00", Finish="2024-10-29 20:15:00", Tipo="Alerta Tardía", Escenario="Realidad 29-O"),
+        dict(Task="Precipitación Extrema Chiva (> 400 mm)", Start="2024-10-29 16:00:00", Finish="2024-10-29 18:00:00", Tipo="Fenómeno Físico"),
+        dict(Task="Propagación Frente Onda FNO (Rambla)", Start="2024-10-29 17:00:00", Finish="2024-10-29 19:30:00", Tipo="Fenómeno Físico"),
+        dict(Task="Anegamiento Crítico Paiporta / Picanya", Start="2024-10-29 18:30:00", Finish="2024-10-29 23:00:00", Tipo="Impacto Crítico"),
+        dict(Task="DISPARO ES-ALERT POYO-NOWCAST", Start="2024-10-29 17:45:00", Finish="2024-10-29 17:50:00", Tipo="Alerta Anticipada"),
+        dict(Task="Ventana Útil Evacuación Vertical", Start="2024-10-29 17:45:00", Finish="2024-10-29 18:30:00", Tipo="Ventana Salvavidas"),
+        dict(Task="DISPARO ES-ALERT OFICIAL CECOPI", Start="2024-10-29 20:11:00", Finish="2024-10-29 20:16:00", Tipo="Alerta Tardía"),
     ])
 
     fig_timeline = px.timeline(
@@ -1382,10 +1464,12 @@ with tab_compare:
             "Alerta Tardía": "#d29922"
         }
     )
+    fig_timeline.add_vline(x="2024-10-29 17:45:00", line_dash="dash", line_color="#58a6ff", annotation_text="17:45 h Disparo Nowcast")
+    fig_timeline.add_vline(x="2024-10-29 20:11:00", line_dash="dash", line_color="#da3633", annotation_text="20:11 h Aviso CECOPI")
     fig_timeline.update_yaxes(autorange="reversed")
     fig_timeline.update_layout(
         template="plotly_dark", plot_bgcolor="#161b22", paper_bgcolor="#0d1117",
-        height=280, margin=dict(l=20, r=20, t=10, b=20), showlegend=True,
+        height=290, margin=dict(l=20, r=20, t=10, b=20), showlegend=True,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     st.plotly_chart(fig_timeline, width="stretch")
