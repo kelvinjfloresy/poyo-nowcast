@@ -27,16 +27,17 @@ FALLBACK_KEY = ""
 
     )
 
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = self._resolve_api_key(api_key)
-        self.headers = {
-            "api_key": self.api_key,
-            "Accept": "application/json",
-        }
+    try:
+    from pyproj import Transformer
+    HAS_PYPROJ = True
+except ImportError:
+    HAS_PYPROJ = False
 
-    def _resolve_api_key(self, provided_key: Optional[str]) -> str:
-        """Resuelve la clave con prioridad: Argumento > Streamlit Secrets > Env > Fallback."""
-        if provided_key:
+try:
+    from aemet_ingestor import AEMETRealTimeClient
+    HAS_AEMET = True
+except ImportError:
+    HAS_AEMET = False
             return provided_key
 
         # 1. Intento de lectura desde .streamlit/secrets.toml
