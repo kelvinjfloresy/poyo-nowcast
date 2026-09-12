@@ -1,7 +1,7 @@
 """
 POYO-NOWCAST: Módulo 5 - Plataforma C2 de Gemelo Digital, Resiliencia y Solvencia II
 Tecnología: Streamlit + PyDeck (Deck.gl WebGPU) + Plotly C2 HUD + PyProj Geodésico.
-Integración: AEMET OpenData API + FNO 2D + Despacho Trilingüe CAP v1.2 (ES/VAL/EN) + Red Institucional.
+Integración: AEMET OpenData API + FNO 2D + Despacho Trilingüe CAP v1.2 + Red Metropolitana Completa.
 Autor: Kelvin Jesus Flores Yarihuaman (https://www.linkedin.com/in/kelvinflores-ingenieria)
 Licencia: Open Science (CC BY 4.0)
 """
@@ -51,7 +51,7 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
     
     html, body, [class*="css"] {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -76,30 +76,45 @@ st.markdown(
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
     }
 
+    /* BANNER DE EVACUACIÓN CON TIPOGRAFÍA Y JERARQUÍA AMPLIADA */
     @keyframes pulse-evac {
-        0% { box-shadow: 0 0 0 0 rgba(218, 54, 51, 0.7); }
-        70% { box-shadow: 0 0 0 10px rgba(218, 54, 51, 0); }
+        0% { box-shadow: 0 0 0 0 rgba(218, 54, 51, 0.75); }
+        70% { box-shadow: 0 0 0 14px rgba(218, 54, 51, 0); }
         100% { box-shadow: 0 0 0 0 rgba(218, 54, 51, 0); }
     }
 
     .evac-banner-red {
-        background: linear-gradient(90deg, rgba(218, 54, 51, 0.35) 0%, rgba(218, 54, 51, 0.12) 100%);
-        border: 1px solid #da3633;
-        border-left: 6px solid #da3633;
-        border-radius: 8px;
-        padding: 10px 16px;
+        background: linear-gradient(90deg, rgba(218, 54, 51, 0.42) 0%, rgba(218, 54, 51, 0.16) 100%);
+        border: 1.5px solid #da3633;
+        border-left: 8px solid #da3633;
+        border-radius: 10px;
+        padding: 14px 20px;
         margin-bottom: 14px;
         display: flex;
         justify-content: space-between;
         align-items: center;
         animation: pulse-evac 1.8s infinite;
     }
+    .evac-banner-red-title {
+        color: #ff7b72;
+        font-size: 1.15rem;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        line-height: 1.3;
+    }
+    .evac-banner-red-sub {
+        color: #f0f6fc;
+        font-size: 0.90rem;
+        font-weight: 500;
+        margin-top: 3px;
+    }
+
     .evac-banner-orange {
-        background: linear-gradient(90deg, rgba(219, 109, 40, 0.28) 0%, rgba(219, 109, 40, 0.08) 100%);
-        border: 1px solid #bd561d;
-        border-left: 6px solid #f0883e;
-        border-radius: 8px;
-        padding: 10px 16px;
+        background: linear-gradient(90deg, rgba(219, 109, 40, 0.35) 0%, rgba(219, 109, 40, 0.12) 100%);
+        border: 1.5px solid #bd561d;
+        border-left: 8px solid #f0883e;
+        border-radius: 10px;
+        padding: 14px 20px;
         margin-bottom: 14px;
         display: flex;
         justify-content: space-between;
@@ -107,35 +122,35 @@ st.markdown(
     }
 
     .badge-alert-red {
-        background: #da3633; color: #ffffff; padding: 5px 12px; border-radius: 4px;
-        font-weight: 700; font-size: 0.74rem; font-family: 'JetBrains Mono', monospace;
+        background: #da3633; color: #ffffff; padding: 6px 14px; border-radius: 4px;
+        font-weight: 800; font-size: 0.80rem; font-family: 'JetBrains Mono', monospace;
         white-space: nowrap;
     }
     .badge-alert-orange {
         background: rgba(219, 109, 40, 0.25); color: #f0883e; border: 1px solid #bd561d;
-        padding: 5px 12px; border-radius: 4px; font-weight: 700; font-size: 0.74rem;
+        padding: 6px 14px; border-radius: 4px; font-weight: 800; font-size: 0.80rem;
         font-family: 'JetBrains Mono', monospace; white-space: nowrap;
     }
     .badge-alert-yellow {
         background: rgba(210, 153, 34, 0.2); color: #d29922; border: 1px solid #bb8009;
-        padding: 5px 12px; border-radius: 4px; font-weight: 700; font-size: 0.74rem;
+        padding: 6px 14px; border-radius: 4px; font-weight: 800; font-size: 0.80rem;
         font-family: 'JetBrains Mono', monospace; white-space: nowrap;
     }
     .badge-alert-green {
         background: rgba(35, 134, 54, 0.2); color: #3fb950; border: 1px solid #238636;
-        padding: 5px 12px; border-radius: 4px; font-weight: 700; font-size: 0.74rem;
+        padding: 6px 14px; border-radius: 4px; font-weight: 800; font-size: 0.80rem;
         font-family: 'JetBrains Mono', monospace; white-space: nowrap;
     }
     .badge-clock-box {
-        background: #161b22; border: 1px solid #388bfd; color: #58a6ff; padding: 5px 10px;
-        border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.74rem; font-weight: 700;
+        background: #161b22; border: 1px solid #388bfd; color: #58a6ff; padding: 6px 12px;
+        border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; font-weight: 700;
         white-space: nowrap;
     }
 
     .telemetry-strip {
         background: rgba(13, 17, 23, 0.95); border: 1px solid #30363d; border-radius: 6px;
-        padding: 8px 16px; margin-bottom: 12px; display: flex; justify-content: space-between;
-        align-items: center; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;
+        padding: 9px 18px; margin-bottom: 12px; display: flex; justify-content: space-between;
+        align-items: center; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; flex-wrap: wrap; gap: 8px;
     }
 
     .legend-box {
@@ -148,15 +163,14 @@ st.markdown(
     .legend-circle-outline { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: transparent; }
 
     .aemet-featured-card {
-        background: linear-gradient(135deg, rgba(35, 134, 54, 0.20) 0%, rgba(22, 27, 34, 0.95) 100%);
+        background: linear-gradient(135deg, rgba(35, 134, 54, 0.22) 0%, rgba(22, 27, 34, 0.95) 100%);
         border: 1.5px solid #2ea043;
         border-radius: 8px;
         padding: 10px 12px;
         margin-bottom: 14px;
-        box-shadow: 0 0 14px rgba(46, 160, 67, 0.18);
+        box-shadow: 0 0 14px rgba(46, 160, 67, 0.20);
     }
 
-    /* ESTILIZACIÓN TÁCTICA DEL MODO DE OPERACIÓN */
     .mode-selector-container {
         background: rgba(22, 27, 34, 0.95);
         border: 1.5px solid #388bfd;
@@ -166,9 +180,7 @@ st.markdown(
         box-shadow: 0 0 14px rgba(56, 139, 253, 0.20);
     }
 
-    div[data-testid="stRadio"] > div {
-        gap: 6px;
-    }
+    div[data-testid="stRadio"] > div { gap: 6px; }
     div[data-testid="stRadio"] label {
         background: #161b22;
         border: 1px solid #30363d;
@@ -221,7 +233,7 @@ def fmt_int(val: float, suffix: str = "") -> str:
     return f"{int(round(val)):,}".replace(",", ".") + suffix
 
 # ==============================================================================
-# MOTOR GEODÉSICO Y DATA PIPELINE
+# MOTOR GEODÉSICO Y DATA PIPELINE EXPANDIDO (ÁREA METROPOLITANA COMPLETA)
 # ==============================================================================
 class GeoProjector:
     def __init__(self):
@@ -245,9 +257,11 @@ VULNERABLE_CENTERS_BASE = [
     {"name": "IES La Sénia (Punto Alto Refugio)", "mun": "Paiporta", "type": "REFUGIO", "lon": -0.4230, "lat": 39.4290, "beds": 300, "h_base": 0.40},
     {"name": "Residencia Ballesol Sedaví", "mun": "Sedaví", "type": "GERIÁTRICO", "lon": -0.3880, "lat": 39.4260, "beds": 140, "h_base": 1.90},
     {"name": "Centro Sanitario Integrado Catarroja", "mun": "Catarroja", "type": "SALUD", "lon": -0.4050, "lat": 39.4040, "beds": 0, "h_base": 1.80},
+    {"name": "Residencia Seniors Torrent", "mun": "Torrent", "type": "GERIÁTRICO", "lon": -0.4680, "lat": 39.4310, "beds": 110, "h_base": 1.10},
+    {"name": "Centro de Salud Aldaia", "mun": "Aldaia", "type": "SALUD", "lon": -0.4610, "lat": 39.4630, "beds": 0, "h_base": 1.30},
 ]
 
-# HITOS METROPOLITANOS, UNIVERSIDADES Y SEDES INSTITUCIONALES OFICIALES
+# HITOS METROPOLITANOS, SEDES OFICIALES Y UNIVERSIDADES (INCLUYE VIU)
 METRO_LANDMARKS_BASE = [
     {"name": "Aeropuerto de Manises / Valencia (VLC)", "type": "AEROPUERTO", "lon": -0.4816, "lat": 39.4893, "icon": "✈️", "h_base": 0.25},
     {"name": "Estación Central AVE Joaquín Sorolla", "type": "FERROCARRIL", "lon": -0.3800, "lat": 39.4580, "icon": "🚆", "h_base": 0.18},
@@ -258,10 +272,10 @@ METRO_LANDMARKS_BASE = [
     {"name": "Parque Comarcal de Bomberos de Torrent", "type": "BOMBEROS", "lon": -0.4680, "lat": 39.4320, "icon": "🚒", "h_base": 0.25},
     {"name": "Estación Metrovalencia Paiporta", "type": "TRANSPORTE", "lon": -0.4175, "lat": 39.4270, "icon": "🚇", "h_base": 2.40},
     {"name": "Centro de Coordinación 112 GVA (L'Eliana)", "type": "MANDO_C2", "lon": -0.5280, "lat": 39.5660, "icon": "🏢", "h_base": 0.05},
-    # Organismos Oficiales y Universidades
     {"name": "Palau de la Generalitat Valenciana (Conselleria Interior)", "type": "GOBIERNO", "lon": -0.3765, "lat": 39.4770, "icon": "🏛️", "h_base": 0.10},
     {"name": "CHJ - Confederación Hidrográfica del Júcar (SAIH)", "type": "ORGANISMO_CUENCA", "lon": -0.3590, "lat": 39.4785, "icon": "💧", "h_base": 0.15},
     {"name": "Delegación del Gobierno en la Comunitat Valenciana", "type": "ESTADO", "lon": -0.3710, "lat": 39.4760, "icon": "⚖️", "h_base": 0.10},
+    {"name": "VIU - Universidad Internacional de Valencia", "type": "UNIVERSIDAD", "lon": -0.3580, "lat": 39.4720, "icon": "🎓", "h_base": 0.10},
     {"name": "Universitat de València (Campus Tarongers / Blasco Ibáñez)", "type": "UNIVERSIDAD", "lon": -0.3440, "lat": 39.4780, "icon": "🎓", "h_base": 0.12},
     {"name": "Universitat Politècnica de València (Campus de Vera)", "type": "UNIVERSIDAD", "lon": -0.3420, "lat": 39.4810, "icon": "🏛️", "h_base": 0.10},
 ]
@@ -271,26 +285,35 @@ def load_all_system_artifacts():
     parquet_path = "data/processed/flood_damage_matrix.parquet"
     summary_path = "data/processed/solvency_ii_qrt_summary.csv"
 
+    # Malla metropolitana expandida: 12 municipios de l'Horta Sud y València
+    expanded_muns = [
+        "Paiporta", "Catarroja", "Sedaví", "Massanassa", "Picanya", "Benetússer", 
+        "Alfafar", "Torrent", "Aldaia", "Alaquàs", "Quart de Poblet", "València"
+    ]
+
     if not os.path.exists(parquet_path):
         os.makedirs(os.path.dirname(os.path.abspath(parquet_path)), exist_ok=True)
         np.random.seed(46)
-        n = 5000
+        n = 6500
         muns = np.random.choice(
-            ["Paiporta", "Catarroja", "Sedaví", "Massanassa", "Picanya", "Benetússer", "Alfafar"],
-            size=n, p=[0.25, 0.20, 0.15, 0.12, 0.10, 0.10, 0.08]
+            expanded_muns,
+            size=n, p=[0.18, 0.14, 0.10, 0.08, 0.08, 0.08, 0.06, 0.08, 0.06, 0.05, 0.04, 0.05]
         )
-        x = np.random.uniform(720000.0, 726500.0, n)
-        y = np.random.uniform(4365000.0, 4371000.0, n)
-        d_rambla = np.abs((y - 4368000.0) - 0.4 * (x - 722000.0))
-        depth = np.clip(3.2 * np.exp(-d_rambla / 800.0) + np.random.normal(0, 0.05, n), 0.0, 4.2).astype(np.float32)
-        vel = np.clip(2.6 * (depth / 3.0) + np.random.normal(0, 0.1, n), 0.0, 3.5).astype(np.float32)
+        x = np.random.uniform(716000.0, 729000.0, n)
+        y = np.random.uniform(4362000.0, 4375000.0, n)
+        d_rambla = np.abs((y - 4368000.0) - 0.38 * (x - 722000.0))
+        depth = np.clip(3.4 * np.exp(-d_rambla / 950.0) + np.random.normal(0, 0.05, n), 0.0, 4.5).astype(np.float32)
+        vel = np.clip(2.8 * (depth / 3.2) + np.random.normal(0, 0.1, n), 0.0, 3.8).astype(np.float32)
         dpm = np.clip(0.15 + 0.22 * depth + np.random.normal(0, 0.06, n), 0.0, 1.0).astype(np.float32)
         collapse = dpm >= 0.40
-        assets = np.random.lognormal(12.1, 0.45, n)
-        isolated = np.isin(muns, ["Paiporta", "Picanya", "Sedaví"]) & (depth > 1.2)
-        tti = np.where(isolated, np.random.uniform(20.0, 45.0, n), np.nan).astype(np.float32)
-        critical = np.random.choice([True, False], size=n, p=[0.04, 0.96])
-        asset_types = np.random.choice(["Residencial", "Industrial / Logística", "Vehículos / Vados", "Infraestructura Pública"], size=n, p=[0.50, 0.30, 0.15, 0.05])
+        assets = np.random.lognormal(12.2, 0.50, n)
+        isolated = np.isin(muns, ["Paiporta", "Picanya", "Sedaví", "Aldaia", "Catarroja"]) & (depth > 1.1)
+        tti = np.where(isolated, np.random.uniform(18.0, 45.0, n), np.nan).astype(np.float32)
+        critical = np.random.choice([True, False], size=n, p=[0.05, 0.95])
+        asset_types = np.random.choice(
+            ["Residencial", "Industrial / Logística", "Vehículos / Vados", "Infraestructura Pública"], 
+            size=n, p=[0.50, 0.30, 0.15, 0.05]
+        )
 
         df = pd.DataFrame({
             "parcel_id": [f"46{np.random.randint(100, 999)}A{i:05d}" for i in range(n)],
@@ -310,12 +333,15 @@ def load_all_system_artifacts():
         if "municipality" in df.columns:
             df["municipality"] = df["municipality"].astype(str)
         if "asset_type" not in df.columns:
-            df["asset_type"] = np.random.choice(["Residencial", "Industrial / Logística", "Vehículos / Vados", "Infraestructura Pública"], size=len(df), p=[0.50, 0.30, 0.15, 0.05])
+            df["asset_type"] = np.random.choice(
+                ["Residencial", "Industrial / Logística", "Vehículos / Vados", "Infraestructura Pública"], 
+                size=len(df), p=[0.50, 0.30, 0.15, 0.05]
+            )
 
     df["lon"], df["lat"] = PROJECTOR.transform_points(df["x_coord"].to_numpy(), df["y_coord"].to_numpy())
 
     realistic_roads = [
-        {"name": "CV-36 Eje Torrent - Picanya - Valencia", "h_base": 2.40, "coords": [[-0.450, 39.435], [-0.432, 39.439], [-0.418, 39.444], [-0.395, 39.448], [-0.380, 39.452]]},
+        {"name": "CV-36 Eje Torrent - Picanya - Valencia", "h_base": 2.40, "coords": [[-0.468, 39.432], [-0.450, 39.435], [-0.432, 39.439], [-0.418, 39.444], [-0.395, 39.448], [-0.380, 39.452]]},
         {"name": "V-30 Bulevar Sur (Nuevo Cauce Turia)", "h_base": 1.20, "coords": [[-0.440, 39.458], [-0.415, 39.450], [-0.390, 39.442], [-0.365, 39.435], [-0.340, 39.430]]},
         {"name": "V-31 Pista de Silla (Acceso Sur A-7)", "h_base": 2.80, "coords": [[-0.405, 39.385], [-0.395, 39.405], [-0.388, 39.420], [-0.375, 39.438], [-0.370, 39.450]]},
         {"name": "CV-400 Eje Paiporta - Benetússer - Catarroja", "h_base": 3.10, "coords": [[-0.402, 39.400], [-0.408, 39.412], [-0.418, 39.425], [-0.422, 39.438], [-0.418, 39.448]]},
@@ -326,7 +352,7 @@ def load_all_system_artifacts():
         {"name": "Corredor V-30 Este -> Puerto de Valencia", "h_base": 0.30, "coords": [[-0.365, 39.435], [-0.340, 39.430], [-0.332, 39.438], [-0.3250, 39.4450]]},
         {"name": "Eje Sant Vicent Màrtir -> Estación Joaquín Sorolla AVE", "h_base": 0.20, "coords": [[-0.388, 39.440], [-0.384, 39.449], [-0.3800, 39.4580]]},
         {"name": "Autovía de El Saler -> Ciutat de les Arts i les Ciències", "h_base": 0.25, "coords": [[-0.365, 39.435], [-0.358, 39.445], [-0.3530, 39.4540]]},
-        {"name": "Eje Blasco Ibáñez / Tarongers -> UV / UPV / CHJ", "h_base": 0.15, "coords": [[-0.3765, 39.4770], [-0.3590, 39.4785], [-0.3440, 39.4780], [-0.3420, 39.4810]]}
+        {"name": "Eje Blasco Ibáñez / Tarongers -> VIU / UV / UPV / CHJ", "h_base": 0.15, "coords": [[-0.3765, 39.4770], [-0.3590, 39.4785], [-0.3580, 39.4720], [-0.3440, 39.4780], [-0.3420, 39.4810]]}
     ]
 
     qrt_df = pd.read_csv(summary_path) if os.path.exists(summary_path) else None
@@ -336,7 +362,7 @@ def load_all_system_artifacts():
 df_parcels, realistic_roads, qrt_summary = load_all_system_artifacts()
 
 # ==============================================================================
-# BARRA LATERAL: BOTÓN AEMET DESTACADO Y SELECTOR TÁCTICO DE OPERACIÓN
+# BARRA LATERAL: TELEMETRÍA CON HORA/FECHA EXACTA Y MODO DESTACADO
 # ==============================================================================
 st.sidebar.markdown(
     """
@@ -348,7 +374,7 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
-# 1. BOTÓN DESTACADO AEMET EN PRIMERA POSICIÓN
+# TELEMETRÍA AEMET DESTACADA
 st.sidebar.markdown(
     """
     <div class='aemet-featured-card'>
@@ -363,12 +389,12 @@ st.sidebar.markdown(
 )
 conectar_aemet = st.sidebar.toggle("🟢 Habilitar Telemetría AEMET en Directo", value=True, key="aemet_toggle")
 
-# 2. SELECTOR TÁCTICO DE MODO DE OPERACIÓN DESTACADO
+# SELECTOR TÁCTICO DE MODO DE OPERACIÓN
 st.sidebar.markdown(
     """
     <div class='mode-selector-container'>
         <b style='color:#58a6ff; font-size:0.82rem;'>🎛️ MODO DE OPERACIÓN ACTIVO</b><br/>
-        <span style='color:#8b949e; font-size:0.72rem;'>Conmutación Forense 2024 vs. Nowcast 2026+</span>
+        <span style='color:#8b949e; font-size:0.72rem;'>Conmutación Forense 2024 vs. Nowcast Predictivo</span>
     </div>
     """,
     unsafe_allow_html=True
@@ -459,6 +485,7 @@ if "Forense" in sim_mode:
     )
     exact_clock = f"{16 + sim_minute // 60:02d}:{sim_minute % 60:02d} h"
     clock_badge_text = f"🕒 29-O-2024 | {exact_clock} (T + {sim_minute} min)"
+    sensor_date_label = f"29/10/2024 {exact_clock}"
     
     t_arr = np.array([0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 360])
     rain_series = np.array([120.0, 185.0, 260.0, 340.0, 415.0, 465.0, 488.0, 491.2, 491.2, 491.2, 491.2, 491.2])
@@ -484,15 +511,19 @@ else:
     factor_clima = 1.0 if "Actual" in horizonte_clima else (1.08 if "2030" in horizonte_clima else (1.15 if "2040" in horizonte_clima else 1.22))
     
     lead_time_min = st.sidebar.slider("Avance Temporal (Lead Time):", 15, 180, 60, step=15, format="T + %d min", key="nowcast_lead")
-    projected_clock = (now_valencia + timedelta(minutes=lead_time_min)).strftime("%H:%M h")
+    simulated_target_time = now_valencia + timedelta(minutes=lead_time_min)
+    projected_clock = simulated_target_time.strftime("%H:%M h")
     clock_badge_text = f"🕒 HORA VALENCIA: {projected_clock} (T + {lead_time_min} min)"
 
     rain_real = 0.0
+    sensor_date_label = now_valencia.strftime("%d/%m/%Y %H:%M")
     if conectar_aemet and HAS_AEMET:
         aemet_client = AEMETRealTimeClient()
         live_obs = aemet_client.get_basin_live_rainfall()
         telemetry_active = True
         rain_real = live_obs["rain_4h_mm"]
+        raw_ts = live_obs.get('timestamp_utc', '')
+        sensor_date_label = raw_ts.replace("T", " ") if raw_ts else now_valencia.strftime("%d/%m/%Y %H:%M UTC")
         
         amc_auto = "Seco (AMC I)" if rain_real < 10.0 else ("Normal (AMC II)" if rain_real < 35.0 else "Saturado (AMC III)")
         amc_mode = st.sidebar.selectbox(
@@ -538,8 +569,8 @@ else:
     peak_damage_factor_reached = current_depth_factor
 
 st.sidebar.markdown("<hr style='border:0.5px solid #21262d; margin:8px 0;'/>", unsafe_allow_html=True)
-st.sidebar.markdown("<b style='color:#c9d1d9; font-size:0.80rem;'>📍 Filtro Territorial y Capas Críticas</b>", unsafe_allow_html=True)
-col_s1, col_s2 = st.sidebar.columns(2)
+st.sidebar.markdown("<b style='color:#c9d1d9; font-size:0.80rem;'>📍 Filtro Territorial Metropolitano</b>", unsafe_allow_html=True)
+col_s1, col_s2 = st.columns(2)
 with col_s1:
     show_roads = st.checkbox("Red Viaria Arterial", value=True, key="chk_roads")
     show_vulnerable = st.checkbox("Centros Sensibles", value=True, key="chk_vuln")
@@ -549,7 +580,7 @@ with col_s2:
     show_isochrones = st.checkbox("Anillos Isocronas", value=True, key="chk_isochrones")
 
 all_municipalities = sorted(df_parcels["municipality"].unique())
-selected_muns = st.sidebar.multiselect("Términos Municipales:", options=all_municipalities, default=all_municipalities, key="sel_muns")
+selected_muns = st.sidebar.multiselect("Municipios Analizados:", options=all_municipalities, default=all_municipalities, key="sel_muns")
 
 # FILTRADO Y FÍSICA ESTRUCTURAL
 active_df = df_parcels[df_parcels["municipality"].isin(selected_muns)].copy()
@@ -603,7 +634,7 @@ if has_experienced_catastrophe:
     elif rain_mm >= 180.0 and q_peak_simulated < 1200.0:
         badge_txt = "🔴 SIT. 2: ALERTA ROJA PREVENTIVA (CHIVA > 180 mm)"
     elif q_peak_simulated >= 1200.0 and rain_mm < 180.0:
-        badge_txt = "🔴 SIT. 2: DESBORDAMIENTO RAMBLA DEL POYO"
+        badge_txt = "🔴 SIT. 2: DESBORDAMIENTO METROPOLITANO"
     else:
         badge_txt = "🔴 SIT. 2: EMERGENCIA CATASTRÓFICA MÁXIMA"
     alert_badge_html = f"<span class='badge-alert-red'>{badge_txt}</span>"
@@ -632,7 +663,7 @@ st.markdown(
         <div style='display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 8px;'>
             <div style='flex: 1; min-width: 280px;'>
                 <h1 style='margin:0; font-size: 1.45rem; letter-spacing: -0.02em;'>POYO-NOWCAST // PLATAFORMA C2 DE ALTA DEFINICIÓN</h1>
-                <span style='color: #8b949e; font-size: 0.75rem;'>RAMBLA DEL POYO & HORTA SUD | FÍSICA NEURONAL FNO 2D Y TRANSFERENCIA DE RIESGO SOLVENCIA II</span>
+                <span style='color: #8b949e; font-size: 0.75rem;'>ÁREA METROPOLITANA DE VALÈNCIA & L'HORTA SUD | FÍSICA FNO 2D Y TRANSFERENCIA DE RIESGO SOLVENCIA II</span>
             </div>
             <div style='display: flex; gap: 8px; align-items: center;'>
                 {alert_badge_html}
@@ -644,18 +675,19 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# BANNER DE EMERGENCIA CON TIPOGRAFÍA GRANDE Y DESTACADA
 if alert_state == "ROJO":
     st.markdown(
         """
         <div class='evac-banner-red'>
-            <div style='display:flex; align-items:center; gap:12px;'>
-                <span style='font-size:1.5rem;'>🚨</span>
+            <div style='display:flex; align-items:center; gap:16px;'>
+                <span style='font-size:2.2rem;'>🚨</span>
                 <div>
-                    <b style='color:#ff7b72; font-size:0.90rem;'>ORDEN GENERAL DE EVACUACIÓN VERTICAL — PROTECCIÓN CIVIL / CECOPI</b><br/>
-                    <span style='color:#f0f6fc; font-size:0.78rem;'>PELIGRO EXTREMO POR DESBORDAMIENTO. Suba de inmediato a plantas altas. Prohibido circular por carretera o acceder a garajes/vados.</span>
+                    <div class='evac-banner-red-title'>ORDEN GENERAL DE EVACUACIÓN VERTICAL — PROTECCIÓN CIVIL / CECOPI</div>
+                    <div class='evac-banner-red-sub'>PELIGRO EXTREMO POR DESBORDAMIENTO. Suba de inmediato a plantas altas. Prohibido circular por carretera o acceder a garajes/vados.</div>
                 </div>
             </div>
-            <div style='text-align:right; font-family: monospace; font-size:0.75rem; color:#ff7b72; font-weight:700;'>
+            <div style='text-align:right; font-family: monospace; font-size:0.80rem; color:#ff7b72; font-weight:800;'>
                 VENTANA DE ESCAPE: AGOTADA<br/><span style='color:#c9d1d9; font-weight:normal;'>Permanezca en pisos altos</span>
             </div>
         </div>
@@ -666,14 +698,14 @@ elif alert_state == "NARANJA":
     st.markdown(
         """
         <div class='evac-banner-orange'>
-            <div style='display:flex; align-items:center; gap:12px;'>
-                <span style='font-size:1.5rem;'>⚠️</span>
+            <div style='display:flex; align-items:center; gap:16px;'>
+                <span style='font-size:2.2rem;'>⚠️</span>
                 <div>
-                    <b style='color:#f0883e; font-size:0.90rem;'>PRE-ALERTA DE EVACUACIÓN: EVITE DESPLAZAMIENTOS Y RETIRE VEHÍCULOS</b><br/>
-                    <span style='color:#f0f6fc; font-size:0.78rem;'>Onda de avenida aproximándose a l'Horta Sud. Asegure puntos altos y aléjese de puentes y ramblas.</span>
+                    <div style='color:#f0883e; font-size:1.10rem; font-weight:800;'>PRE-ALERTA DE EVACUACIÓN: EVITE DESPLAZAMIENTOS Y RETIRE VEHÍCULOS</div>
+                    <div style='color:#f0f6fc; font-size:0.88rem; font-weight:500;'>Onda de avenida aproximándose a l'Horta Sud. Asegure puntos altos y aléjese de puentes y ramblas.</div>
                 </div>
             </div>
-            <div style='text-align:right; font-family: monospace; font-size:0.75rem; color:#f0883e; font-weight:700;'>
+            <div style='text-align:right; font-family: monospace; font-size:0.80rem; color:#f0883e; font-weight:800;'>
                 VENTANA DE SEGURIDAD:<br/><span style='color:#ffe3a8; font-weight:normal;'>&lt; 45 MINUTOS</span>
             </div>
         </div>
@@ -681,18 +713,19 @@ elif alert_state == "NARANJA":
         unsafe_allow_html=True,
     )
 
+# BARRA DE TELEMETRÍA CON FECHA Y HORA EXACTA DEL SENSOR
 fno_latency_ms = 38.4 if "Forense" in sim_mode else 42.1
 
 if "Forense" in sim_mode:
     st.markdown(
         f"""
         <div class='telemetry-strip' style='border-left: 4px solid #da3633;'>
-            <div>🏛️ <b>REGISTROS FORENSES 29-O:</b> AEMET / SAIH Hidrosur</div>
+            <div>🏛️ <b>SERIE FORENSE 29-O:</b> Chiva / SAIH Hidrosur</div>
+            <div>📅 <b>Fecha/Hora Sensor:</b> <span style='color:#58a6ff; font-weight:700;'>{sensor_date_label}</span></div>
             <div>🌧️ <b>Lluvia Chiva:</b> <span style='color:#f85149; font-weight:700;'>{fmt_dec(rain_val, 1, ' mm')}</span></div>
             <div>🌊 <b>Caudal Rambla:</b> <span style='color:#58a6ff; font-weight:700;'>{fmt_int(q_peak_simulated, ' m³/s')}</span></div>
-            <div>⏱️ <b>Minuto Hidrograma:</b> T + {sim_minute} min</div>
-            <div>⚡ <b>Latencia Inferencia FNO 2D:</b> <span style='color:#3fb950; font-weight:700;'>{fno_latency_ms:.1f} ms</span> (WebGPU TensorCore)</div>
-            <div>🔴 <span style='color:#f85149; font-weight:700;'>SERIE HISTÓRICA REPRODUCIDA</span></div>
+            <div>⚡ <b>Inferencia FNO 2D:</b> <span style='color:#3fb950; font-weight:700;'>{fno_latency_ms:.1f} ms</span></div>
+            <div>🔴 <span style='color:#f85149; font-weight:700;'>HINDCAST OFICIAL</span></div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -702,11 +735,12 @@ elif telemetry_active and live_obs:
         f"""
         <div class='telemetry-strip' style='border-left: 4px solid #238636;'>
             <div>📡 <b>TELEMETRÍA AEMET:</b> {live_obs['station_name']} ({live_obs['station_id']})</div>
+            <div>📅 <b>Fecha/Hora Sensor:</b> <span style='color:#3fb950; font-weight:700;'>{sensor_date_label}</span></div>
             <div>🌧️ <b>Lluvia 1h:</b> <span style='color:#58a6ff;'>{fmt_dec(live_obs['rain_1h_mm'], 1, ' mm')}</span></div>
             <div>📈 <b>Acum. 4h:</b> <span style='color:#58a6ff;'>{fmt_dec(live_obs['rain_4h_mm'], 1, ' mm')}</span></div>
             <div>🌡️ <b>Temp:</b> {fmt_dec(live_obs['temp_c'], 1, ' °C')}</div>
-            <div>⚡ <b>Latencia Inferencia FNO 2D:</b> <span style='color:#3fb950; font-weight:700;'>{fno_latency_ms:.1f} ms</span> (WebGPU TensorCore)</div>
-            <div>🟢 <span style='color:#3fb950; font-weight:700;'>SENSOR EN LÍNEA (Latencia: &lt; 15 min)</span></div>
+            <div>⚡ <b>Inferencia FNO:</b> <span style='color:#3fb950; font-weight:700;'>{fno_latency_ms:.1f} ms</span></div>
+            <div>🟢 <span style='color:#3fb950; font-weight:700;'>ONLINE (&lt; 15 min)</span></div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -715,10 +749,11 @@ else:
     st.markdown(
         f"""
         <div class='telemetry-strip' style='border-left: 4px solid #1f6feb;'>
+            <div>📅 <b>Timestamp Simulado:</b> <span style='color:#58a6ff; font-weight:700;'>{sensor_date_label}</span></div>
             <div>🌧️ <b>Lluvia Cabecera Chiva:</b> <span style='color:#58a6ff; font-weight:700;'>{fmt_dec(rain_val, 1, ' mm')}</span></div>
             <div>🌊 <b>Caudal Estimado FNO:</b> <span style='color:#58a6ff; font-weight:700;'>{fmt_int(q_peak_simulated, ' m³/s')}</span></div>
-            <div>⚡ <b>Latencia Inferencia FNO 2D:</b> <span style='color:#3fb950; font-weight:700;'>{fno_latency_ms:.1f} ms</span> (WebGPU TensorCore)</div>
-            <div>🔵 <span style='color:#58a6ff; font-weight:700;'>SIMULACIÓN NOWCAST PREDICTIVA</span></div>
+            <div>⚡ <b>Latencia FNO 2D:</b> <span style='color:#3fb950; font-weight:700;'>{fno_latency_ms:.1f} ms</span></div>
+            <div>🔵 <span style='color:#58a6ff; font-weight:700;'>PROYECCIÓN FUTURA NOWCAST</span></div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -792,7 +827,7 @@ if "map_pitch" not in st.session_state:
     st.session_state["map_pitch"] = 52
 
 # ==============================================================================
-# PESTAÑAS
+# PESTAÑAS DEL CENTRO DE MANDO C2
 # ==============================================================================
 tab_3d, tab_esalert, tab_compare, tab_hydro, tab_roads, tab_finances = st.tabs([
     "🌐 Gemelo Digital 3D (WebGPU)",
@@ -804,7 +839,7 @@ tab_3d, tab_esalert, tab_compare, tab_hydro, tab_roads, tab_finances = st.tabs([
 ])
 
 # ------------------------------------------------------------------------------
-# TAB 1: VISOR 3D CON ENLACE INSTITUCIONAL, UNIVERSIDADES Y REENCUADRE
+# TAB 1: VISOR 3D (ÁREA METROPOLITANA, VIU, ISOCRONAS Y SEDES)
 # ------------------------------------------------------------------------------
 with tab_3d:
     col_ctrl_left, col_ctrl_right = st.columns([1.8, 2.2])
@@ -827,8 +862,8 @@ with tab_3d:
                 st.rerun()
         with cam_c2:
             if st.button("🏛️ Sedes / Universidades", use_container_width=True):
-                st.session_state["map_lat"] = 39.4770
-                st.session_state["map_lon"] = -0.3550
+                st.session_state["map_lat"] = 39.4750
+                st.session_state["map_lon"] = -0.3580
                 st.session_state["map_zoom"] = 13.2
                 st.session_state["map_pitch"] = 48
                 st.rerun()
@@ -948,7 +983,7 @@ with tab_3d:
         )
     ]
 
-    # Red viaria arterial
+    # Red viaria arterial metropolitana
     if show_roads and realistic_roads:
         road_paths = []
         for r_item in realistic_roads:
@@ -1026,21 +1061,20 @@ with tab_3d:
             )
         )
 
-    # HITOS METROPOLITANOS, UNIVERSIDADES Y ORGANISMOS OFICIALES
+    # HITOS METROPOLITANOS, UNIVERSIDADES (INCLUYE VIU) Y SEDES OFICIALES
     if show_landmarks:
         eval_factor_land = peak_damage_factor_reached if "Forense" in sim_mode else current_depth_factor
         land_rows = []
         for lmark in METRO_LANDMARKS_BASE:
             h_local_l = lmark["h_base"] * eval_factor_land
             
-            # Evaluación contextual según tipología de nodo
             if has_experienced_catastrophe or eval_factor_land >= 0.70:
                 if lmark["type"] == "UNIVERSIDAD":
-                    l_stat = "🔴 SUSPENSIÓN TOTAL DOCENCIA / EVACUACIÓN"
+                    l_stat = "🔴 SUSPENSIÓN TOTAL ACTIVIDAD PRESENCIAL"
                 elif lmark["type"] == "AEROPUERTO":
                     l_stat = "🔴 CANCELACIÓN VUELOS / PISTAS INOPERATIVAS"
                 elif lmark["type"] == "FERROCARRIL":
-                    l_stat = "🔴 ALTA VELOCIDAD CORTADA / ESTACIÓN CERRADA"
+                    l_stat = "🔴 ALTA VELOCIDAD SUSPENDIDA / ESTACIÓN CERRADA"
                 elif lmark["type"] == "GOBIERNO":
                     l_stat = "🔴 COMITÉ DE CRISIS EN REUNIÓN PERMANENTE (PEI)"
                 elif lmark["type"] == "ORGANISMO_CUENCA":
@@ -1051,13 +1085,13 @@ with tab_3d:
                 l_hex = "#f85149"
             elif eval_factor_land >= 0.35:
                 if lmark["type"] == "UNIVERSIDAD":
-                    l_stat = "🟠 PREALERTA / CLASES SUSPENDIDAS EN TARDE"
+                    l_stat = "🟠 PREALERTA / DOCENCIA PASADA A ONLINE"
                 else:
                     l_stat = "🟠 PREALERTA EN ACCESOS / RESTRICCIÓN TRÁFICO"
                 l_col = [240, 136, 62, 230]
                 l_hex = "#f0883e"
             else:
-                l_stat = "🟢 OPERATIVIDAD INSTITUCIONAL NOMINAL"
+                l_stat = "🟢 OPERATIVIDAD NOMINAL"
                 l_col = [163, 113, 247, 240]
                 l_hex = "#a371f7"
                 
@@ -1242,13 +1276,13 @@ with tab_3d:
     st.download_button(
         label="🌐 Descargar Capa Vectorial de Huella Aluvial Activa (GeoJSON para QGIS / ArcGIS)",
         data=geojson_payload,
-        file_name=f"huella_aluvial_poyo_{int(time.time())}.geojson",
+        file_name=f"huella_aluvial_metropolitana_{int(time.time())}.geojson",
         mime="application/geo+json",
         width="stretch"
     )
 
 # ------------------------------------------------------------------------------
-# TAB 2: DESPACHO ES-ALERT TRILINGÜE (ESPAÑOL / VALENCIÀ / ENGLISH)
+# TAB 2: DESPACHO ES-ALERT TRILINGÜE
 # ------------------------------------------------------------------------------
 with tab_esalert:
     st.subheader("Centro de Despacho ES-Alert Trilingüe & Resiliencia de Servicios Vitales")
@@ -1315,7 +1349,7 @@ with tab_esalert:
                 f"🚨 URGENTE 112 // ALERTA ROJA RAMBLA DEL POYO\n"
                 f"Nivel: EMERGENCIA SIT. 2 | Hora: {clock_badge_text}\n"
                 f"Caudal previsto: {fmt_int(q_peak_simulated, ' m3/s')}. Desbordamiento masivo inminente.\n"
-                f"Evacuación vertical INMEDIATA en Paiporta, Picanya, Sedaví y Catarroja. Suba a pisos altos. NO circule.\n"
+                f"Evacuación vertical INMEDIATA en l'Horta Sud. Suba a pisos altos. NO circule.\n"
                 f"Universidades y transporte suspendidos. Info: @GVA112 #DANAValencia"
             )
         elif alert_state == "NARANJA":
@@ -1323,7 +1357,7 @@ with tab_esalert:
                 f"⚠️ AVISO 112 // ALERTA NARANJA RAMBLA DEL POYO\n"
                 f"Nivel: EMERGENCIA SIT. 1 | Hora: {clock_badge_text}\n"
                 f"Crecida severa propagándose ({fmt_int(q_peak_simulated, ' m3/s')}).\n"
-                f"Aléjese de cauces y ramblas. Retire vehículos de zonas bajas y pasos subterráneos en l'Horta Sud.\n"
+                f"Aléjese de cauces y ramblas. Retire vehículos de zonas bajas y pasos subterráneos.\n"
                 f"Info: @GVA112"
             )
         elif alert_state == "AMARILLO":
@@ -1420,8 +1454,8 @@ with tab_esalert:
     <headline>{headline}</headline>
     <description>{body_es}</description>
     <area>
-      <areaDesc>Horta Sud: Paiporta, Catarroja, Sedavi, Picanya, Massanassa</areaDesc>
-      <circle>39.4230,-0.4180,8000</circle>
+      <areaDesc>Area Metropolitana de Valencia y l'Horta Sud</areaDesc>
+      <circle>39.4230,-0.4180,12000</circle>
     </area>
   </info>
   <info>
@@ -1434,8 +1468,8 @@ with tab_esalert:
     <headline>{headline}</headline>
     <description>{body_val}</description>
     <area>
-      <areaDesc>Horta Sud</areaDesc>
-      <circle>39.4230,-0.4180,8000</circle>
+      <areaDesc>Area Metropolitana de Valencia</areaDesc>
+      <circle>39.4230,-0.4180,12000</circle>
     </area>
   </info>
   <info>
@@ -1448,8 +1482,8 @@ with tab_esalert:
     <headline>RED FLOOD WARNING - CIVIL PROTECTION</headline>
     <description>{body_en}</description>
     <area>
-      <areaDesc>Horta Sud Metropolitan Area</areaDesc>
-      <circle>39.4230,-0.4180,8000</circle>
+      <areaDesc>Valencia Metropolitan Area</areaDesc>
+      <circle>39.4230,-0.4180,12000</circle>
     </area>
   </info>
 </alert>"""
@@ -1482,7 +1516,7 @@ Medida de Mitigación Evaluada: {what_if}
             )
 
 # ------------------------------------------------------------------------------
-# TAB 3: AUDITORÍA FORENSE SPLIT A/B CON SCORECARD Y CRONOGRAMA INTERACTIVO
+# TAB 3: AUDITORÍA FORENSE SPLIT A/B
 # ------------------------------------------------------------------------------
 with tab_compare:
     st.subheader("Auditoría Forense Split A/B: Inteligencia Anticipada vs. Gestión Burocrática")
@@ -1570,12 +1604,66 @@ with tab_compare:
     st.plotly_chart(fig_timeline, width="stretch")
 
 # ------------------------------------------------------------------------------
-# TAB 4: DINÁMICA HIDRÁULICA FNO (MÓDULO 2)
+# TAB 4: DINÁMICA HIDRÁULICA FNO (M2) DIDÁCTICA Y OPERATIVA
 # ------------------------------------------------------------------------------
 with tab_hydro:
+    st.subheader("Dinámica Hidráulica 2D Neuronal (Fourier Neural Operator)")
+
+    # TARJETAS EXPLICATIVAS DE UMBRALES DE CAUDAL Y FÍSICA HIDRÁULICA
+    c_phase1, c_phase2, c_phase3, c_phase4 = st.columns(4)
+    with c_phase1:
+        st.markdown(
+            """
+            <div style='background:#161b22; border-left:4px solid #2ea043; padding:10px; border-radius:6px; font-size:0.75rem;'>
+                <b style='color:#3fb950;'>FASE 1: CONDUCCIÓN</b><br/>
+                <b>Q &lt; 1.000 m³/s</b><br/>
+                Flujo encauzado en rambla. Riesgo limitado a vados, pasos bajos y sendas ribereñas.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    with c_phase2:
+        st.markdown(
+            """
+            <div style='background:#161b22; border-left:4px solid #d29922; padding:10px; border-radius:6px; font-size:0.75rem;'>
+                <b style='color:#d29922;'>FASE 2: DESBORDAMIENTO</b><br/>
+                <b>1.000 - 1.800 m³/s</b><br/>
+                Pérdida de capacidad del cauce en Paiporta y Picanya. Anegamiento de polígonos y sótanos.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    with c_phase3:
+        st.markdown(
+            """
+            <div style='background:#161b22; border-left:4px solid #da3633; padding:10px; border-radius:6px; font-size:0.75rem;'>
+                <b style='color:#f85149;'>FASE 3: CATASTRÓFICA</b><br/>
+                <b>Q &gt; 1.800 m³/s</b><br/>
+                Onda aluvial masiva sobre casco urbano. Colapso de puentes, corte de CV-36 y arrastre de vehículos.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    with c_phase4:
+        volumen_hm3 = (q_peak_simulated * 4.5 * 3600) / 1e6
+        vel_frente_kmh = min(28.0, 12.0 + (q_peak_simulated / 150.0))
+        st.markdown(
+            f"""
+            <div style='background:#161b22; border-left:4px solid #388bfd; padding:10px; border-radius:6px; font-size:0.75rem;'>
+                <b style='color:#58a6ff;'>MÉTRICAS FNO DE AVENIDA</b><br/>
+                <b>Volumen:</b> {volumen_hm3:.1f} Hm³ estimados<br/>
+                <b>Velocidad Frente:</b> ~{vel_frente_kmh:.1f} km/h<br/>
+                <b>Tiempo Concentración:</b> 90 - 120 min
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    st.markdown("<br/>", unsafe_allow_html=True)
+
     col_h1, col_h2 = st.columns([1.6, 1.4])
     with col_h1:
-        st.subheader("Hidrograma Transitorio de la Avenida (Rambla del Poyo)")
+        st.markdown("#### Hidrograma Transitorio de Caudal Líquido (Q)")
         t_steps = np.linspace(0, 360, 60)
         
         if "Forense" in sim_mode:
@@ -1585,12 +1673,18 @@ with tab_hydro:
             q_envelope[:12] = np.linspace(min(50, q_peak_simulated * 0.1), min(250, q_peak_simulated * 0.3), 12)
         
         fig_hydro = go.Figure()
+        
+        # Bandas de riesgo de fondo
+        fig_hydro.add_hrect(y0=0, y1=1000, fillcolor="green", opacity=0.05, line_width=0)
+        fig_hydro.add_hrect(y0=1000, y1=1800, fillcolor="orange", opacity=0.08, line_width=0)
+        fig_hydro.add_hrect(y0=1800, y1=2400, fillcolor="red", opacity=0.10, line_width=0)
+
         fig_hydro.add_trace(go.Scatter(
             x=t_steps, y=q_envelope,
-            mode='lines', line=dict(color='#58a6ff', width=3),
-            name='Caudal FNO 2D', fill='tozeroy', fillcolor='rgba(31, 111, 235, 0.15)'
+            mode='lines', line=dict(color='#58a6ff', width=3.5),
+            name='Caudal FNO 2D', fill='tozeroy', fillcolor='rgba(31, 111, 235, 0.18)'
         ))
-        fig_hydro.add_hline(y=1000.0, line_dash="dash", line_color="#d29922", annotation_text="Capacidad Cauce (1.000 m³/s)")
+        fig_hydro.add_hline(y=1000.0, line_dash="dash", line_color="#d29922", annotation_text="Capacidad Ordinaria del Cauce (1.000 m³/s)")
         fig_hydro.add_hline(y=1800.0, line_dash="dash", line_color="#da3633", annotation_text="Desbordamiento Catastrófico (1.800 m³/s)")
         
         if "Forense" in sim_mode:
@@ -1598,13 +1692,13 @@ with tab_hydro:
         
         fig_hydro.update_layout(
             template="plotly_dark", plot_bgcolor="#161b22", paper_bgcolor="#0d1117",
-            xaxis_title="Minutos transcurridos", yaxis_title="Caudal Líquido Q (m³/s)",
+            xaxis_title="Minutos transcurridos desde inicio del evento", yaxis_title="Caudal Líquido Q (m³/s)",
             margin=dict(l=40, r=40, t=30, b=40), height=340
         )
         st.plotly_chart(fig_hydro, width="stretch")
 
     with col_h2:
-        st.subheader("Distribución de Calados por Término Municipal")
+        st.markdown("#### Calado Hidrodinámico por Término Municipal (m)")
         fig_box = px.box(
             active_df, x="municipality", y="active_depth", color="municipality",
             labels={"active_depth": "Calado h (m)", "municipality": "Municipio"}
