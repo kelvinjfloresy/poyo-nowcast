@@ -199,7 +199,6 @@ class GeoProjector:
 
 PROJECTOR = GeoProjector()
 
-# Base Territorial de Centros Sensibles y Vulnerabilidad
 VULNERABLE_CENTERS_BASE = [
     {"name": "Residencia San Francisco de Asís", "mun": "Paiporta", "type": "GERIÁTRICO", "lon": -0.4190, "lat": 39.4255, "beds": 120, "h_base": 2.20},
     {"name": "Centro de Salud Paiporta", "mun": "Paiporta", "type": "SALUD", "lon": -0.4160, "lat": 39.4280, "beds": 0, "h_base": 1.40},
@@ -261,7 +260,6 @@ def load_all_system_artifacts():
 
     df["lon"], df["lat"] = PROJECTOR.transform_points(df["x_coord"].to_numpy(), df["y_coord"].to_numpy())
 
-    # Red arterial arterial metropolitana ceñida a la llanura de inundación
     realistic_roads = [
         {
             "name": "CV-36 Eje Torrent - Picanya - Valencia (Autovía)",
@@ -307,7 +305,7 @@ def load_all_system_artifacts():
 df_parcels, realistic_roads, qrt_summary = load_all_system_artifacts()
 
 # ==============================================================================
-# BARRA LATERAL: PANEL DE CONTROL Y RESET ROBUSTO DE MEMORIA
+# BARRA LATERAL: PANEL DE CONTROL Y RESET ROBUSTO
 # ==============================================================================
 st.sidebar.markdown(
     """
@@ -337,7 +335,6 @@ if st.sidebar.button("🔄 Restablecer Parámetros (Reset Total)", use_container
     reset_all_controls_and_gpu()
     st.rerun()
 
-# PRESETS DE CONFIGURACIÓN RÁPIDA (1-CLICK)
 st.sidebar.markdown("<b style='color:#c9d1d9; font-size:0.80rem;'>⚡ Presets de Escenario Rápido</b>", unsafe_allow_html=True)
 p_col1, p_col2 = st.sidebar.columns(2)
 with p_col1:
@@ -359,7 +356,6 @@ sim_mode = st.sidebar.radio(
 
 st.sidebar.markdown("<hr style='border:0.5px solid #21262d; margin:8px 0;'/>", unsafe_allow_html=True)
 
-# SIMULADOR DE OBRAS CIVILES / WHAT-IF MITIGATION
 st.sidebar.markdown("<b style='color:#c9d1d9; font-size:0.80rem;'>🛡️ Obras de Defensa / Mitigación (What-If)</b>", unsafe_allow_html=True)
 what_if = st.sidebar.selectbox(
     "Simular Medida de Mitigación:",
@@ -386,7 +382,6 @@ live_obs = None
 telemetry_active = False
 now_valencia = datetime.now(VALENCIA_TZ)
 
-# DINÁMICA TEMPORAL E HISTÉRESIS FÍSICA
 if "Forense" in sim_mode:
     st.sidebar.markdown("<b style='color:#c9d1d9; font-size:0.80rem;'>⏱️ Progresión Temporal de Avenida</b>", unsafe_allow_html=True)
     sim_minute = st.sidebar.slider(
@@ -488,7 +483,6 @@ with col_s2:
 all_municipalities = sorted(df_parcels["municipality"].unique())
 selected_muns = st.sidebar.multiselect("Términos Municipales:", options=all_municipalities, default=all_municipalities, key="sel_muns")
 
-# FILTRADO Y FÍSICA ESTRUCTURAL CON HISTÉRESIS
 active_df = df_parcels[df_parcels["municipality"].isin(selected_muns)].copy()
 
 extra_mota = 0.85 if (ruptura_mota and q_peak_simulated > 300.0) else 0.0
@@ -499,7 +493,6 @@ active_df["active_loss"] = (active_df["economic_loss_eur"] * min(1.6, peak_damag
 
 is_currently_flooded = active_df["active_depth"] >= 0.25
 
-# Ruina estructural permanente
 active_df["dynamic_collapse"] = (
     (active_df["peak_depth_experienced"] >= 1.50) &
     ((active_df["hazard_factor_vh"] * peak_damage_factor_reached >= 1.2) | (active_df["dpm_p90"] >= 0.55))
@@ -513,7 +506,6 @@ active_df["dynamic_p1"] = (
     active_df["dynamic_collapse"]
 )
 
-# ALERTA MULTIVARIABLE C2
 rain_mm = float(rain_val)
 has_experienced_catastrophe = ("Forense" in sim_mode and peak_q_so_far >= 1200.0) or (rain_mm >= 180.0) or (q_peak_simulated >= 1200.0)
 
@@ -545,7 +537,6 @@ else:
     alert_badge_html = "<span class='badge-alert-green'>🟢 NORMALIDAD HIDROLÓGICA</span>"
     alert_state = "VERDE"
 
-# CABECERA HUD C2
 st.markdown(
     f"""
     <div class='hud-header'>
@@ -564,7 +555,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Banners Dinámicos de Evacuación
 if alert_state == "ROJO":
     st.markdown(
         """
@@ -602,7 +592,6 @@ elif alert_state == "NARANJA":
         unsafe_allow_html=True,
     )
 
-# Banner de Telemetría con Latencia
 if "Forense" in sim_mode:
     st.markdown(
         f"""
@@ -690,7 +679,7 @@ with kpi5:
 st.markdown("<br/>", unsafe_allow_html=True)
 
 # ==============================================================================
-# PESTAÑAS (ORDEN OPERATIVO CON ES-ALERT EN SEGUNDA POSICIÓN)
+# PESTAÑAS (ORDEN OPERATIVO)
 # ==============================================================================
 tab_3d, tab_esalert, tab_hydro, tab_roads, tab_finances = st.tabs([
     "🌐 Gemelo Digital 3D (WebGPU)",
@@ -809,7 +798,6 @@ with tab_3d:
         )
     ]
 
-    # Red viaria arterial realista
     if show_roads and realistic_roads:
         road_paths = []
         for r_item in realistic_roads:
@@ -853,7 +841,6 @@ with tab_3d:
             )
         )
 
-    # Centros Sensibles con evaluación dinámica de afección
     if show_vulnerable:
         eval_factor_vuln = peak_damage_factor_reached if "Forense" in sim_mode else current_depth_factor
         vuln_rows = []
@@ -895,7 +882,6 @@ with tab_3d:
             )
         )
 
-    # Hospitales terciarios
     if show_hospitals:
         hosp_data = []
         for h in [
@@ -1037,7 +1023,6 @@ with tab_esalert:
         else:
             st.success("🟢 **REDES ENERGÉTICAS ESTABLES:** Suministro y nodos de comunicación asegurados.")
 
-        # COMUNICADO OFICIAL REACTIVO (MODULADO SEGÚN EL SEMÁFORO REAL)
         st.markdown("#### 📢 Comunicado Oficial de Situación (Twitter/X & Radios)")
         if alert_state == "ROJO":
             tweet_text = (
@@ -1281,7 +1266,6 @@ with tab_finances:
     scr_current = max(0.0, current_loss_m * 1.35 - (current_loss_m * 0.042))
     coc_current = 0.06 * scr_current
     
-    # FILA 1: BALANCE REGULATORIO, CASCADA WATERFALL & TIPOLOGÍA DE ACTIVOS
     f_col1, f_col2, f_col3 = st.columns([1.1, 1.1, 0.9])
     with f_col1:
         st.markdown("#### Balance Regulatorio (EIOPA ORSA)")
@@ -1296,7 +1280,7 @@ with tab_finances:
         st.dataframe(solv_table, width="stretch", hide_index=True)
         
     with f_col2:
-        st.markdown("#### Cascada de Financiación (Waterfall)")
+        st.markdown("#### Cascada de Absorción (Waterfall)")
         val_ccs = current_loss_m * 0.72
         val_param = min(current_loss_m * 0.28, total_payout_m)
         val_gap = max(0.0, current_loss_m - (val_ccs + val_param))
@@ -1337,7 +1321,6 @@ with tab_finances:
 
     st.markdown("<br/>", unsafe_allow_html=True)
 
-    # FILA 2: CURVA EP & MATRIZ 2D PARAMÉTRICA
     f_col4, f_col5 = st.columns(2)
     with f_col4:
         st.markdown("#### Curva EP con Reaseguro Exceso de Pérdida (XoL)")
@@ -1377,7 +1360,6 @@ with tab_finances:
 
     st.markdown("<br/>", unsafe_allow_html=True)
 
-    # FILA 3: PROYECCIÓN DECENAL DEL RIESGO CLIMÁTICO (2024 - 2050)
     st.markdown("#### Proyección Decenal del Riesgo Climático & Coste de Solvencia (2024 - 2050)")
     decadas = np.array([2024, 2030, 2035, 2040, 2045, 2050])
     factor_ssp2 = 1.0 + 0.0045 * (decadas - 2024)
