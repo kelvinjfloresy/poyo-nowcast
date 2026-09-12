@@ -1,8 +1,8 @@
 """
 POYO-NOWCAST: Módulo 5 - Plataforma C2 de Gemelo Digital, Resiliencia y Solvencia II
 Tecnología: Streamlit + PyDeck (Deck.gl WebGPU) + Plotly C2 HUD + PyProj Geodésico.
-Integración: AEMET OpenData API + FNO 2D + Isocronas de Evacuación + Daño Catastral Diferenciado.
-Autor: Kelvin Jesus Flores Yarihuaman (https://www.linkedin.com/in/kelvinflores-ingenieria / kelvinjfloresy@gmail.com)
+Integración: AEMET OpenData API + FNO 2D + Isocronas Huecas + Daño Catastral Diferenciado.
+Autor: Kelvin Jesus Flores Yarihuaman (https://www.linkedin.com/in/kelvinflores-ingenieria)
 Licencia: Open Science (CC BY 4.0)
 """
 
@@ -140,8 +140,8 @@ st.markdown(
 
     .legend-box {
         background: rgba(22, 27, 34, 0.92); border: 1px solid #30363d; border-radius: 8px;
-        padding: 8px 14px; margin-bottom: 10px; display: flex; gap: 14px; align-items: center;
-        flex-wrap: wrap; font-size: 0.76rem;
+        padding: 8px 14px; margin-bottom: 10px; display: flex; gap: 12px; align-items: center;
+        flex-wrap: wrap; font-size: 0.74rem;
     }
     .legend-item { display: flex; align-items: center; gap: 5px; }
     .legend-bullet { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
@@ -257,14 +257,18 @@ def load_all_system_artifacts():
 
     df["lon"], df["lat"] = PROJECTOR.transform_points(df["x_coord"].to_numpy(), df["y_coord"].to_numpy())
 
+    # Red arterial metropolitana conectando toda la comarca y los 3 hospitales
     realistic_roads = [
         {"name": "CV-36 Eje Torrent - Picanya - Valencia", "h_base": 2.40, "coords": [[-0.450, 39.435], [-0.432, 39.439], [-0.418, 39.444], [-0.395, 39.448], [-0.380, 39.452]]},
         {"name": "V-30 Bulevar Sur / Nuevo Cauce Turia", "h_base": 1.20, "coords": [[-0.440, 39.458], [-0.415, 39.450], [-0.390, 39.442], [-0.365, 39.435], [-0.340, 39.430]]},
         {"name": "V-31 Pista de Silla (Acceso Sur A-7)", "h_base": 2.80, "coords": [[-0.405, 39.385], [-0.395, 39.405], [-0.388, 39.420], [-0.375, 39.438], [-0.370, 39.450]]},
         {"name": "CV-400 Eje Paiporta - Benetússer - Catarroja", "h_base": 3.10, "coords": [[-0.402, 39.400], [-0.408, 39.412], [-0.418, 39.425], [-0.422, 39.438], [-0.418, 39.448]]},
         {"name": "Puente CV-407 Picanya - Paiporta (Cruce Rambla)", "h_base": 3.50, "coords": [[-0.432, 39.434], [-0.424, 39.430], [-0.415, 39.426], [-0.405, 39.422]]},
-        {"name": "Enlace Bulevar Tres Cruces -> Hospital General", "h_base": 0.40, "coords": [[-0.415, 39.450], [-0.412, 39.460], [-0.4072, 39.4682]]},
-        {"name": "Corredor Sanitario V-30 Sur -> Hospital La Fe", "h_base": 0.50, "coords": [[-0.390, 39.442], [-0.382, 39.443], [-0.3768, 39.4435]]}
+        {"name": "Enlace Tres Cruces -> H. General Universitari", "h_base": 0.40, "coords": [[-0.415, 39.450], [-0.412, 39.460], [-0.4072, 39.4682]]},
+        {"name": "Corredor Sanitario V-30 Sur -> Hospital La Fe", "h_base": 0.50, "coords": [[-0.390, 39.442], [-0.382, 39.443], [-0.3768, 39.4435]]},
+        # Conexión estratégica hacia el Hospital de Manises
+        {"name": "Autovía A-3 Eje Valencia -> H. Manises / Aeropuerto", "h_base": 0.35, "coords": [[-0.4072, 39.4682], [-0.4250, 39.4750], [-0.4420, 39.4830], [-0.4608, 39.4930]]},
+        {"name": "Conector Fluvial V-30 Oeste -> H. Manises", "h_base": 0.60, "coords": [[-0.440, 39.458], [-0.451, 39.475], [-0.4608, 39.4930]]}
     ]
 
     qrt_df = pd.read_csv(summary_path) if os.path.exists(summary_path) else None
@@ -448,28 +452,22 @@ with col_s1:
     show_roads = st.checkbox("Red Viaria Arterial", value=True, key="chk_roads")
     show_vulnerable = st.checkbox("Centros Sensibles", value=True, key="chk_vuln")
 with col_s2:
-    show_hospitals = st.checkbox("Hospitales", value=True, key="chk_hosp")
-    show_isochrones = st.checkbox("Isocronas Evacuación", value=True, key="chk_isochrones")
+    show_hospitals = st.checkbox("Hospitales (3 Nodos)", value=True, key="chk_hosp")
+    show_isochrones = st.checkbox("Anillos Isocronas", value=True, key="chk_isochrones")
 
 all_municipalities = sorted(df_parcels["municipality"].unique())
 selected_muns = st.sidebar.multiselect("Términos Municipales:", options=all_municipalities, default=all_municipalities, key="sel_muns")
 
-# FILTRADO Y FÍSICA ESTRUCTURAL CON HISTÉRESIS Y CURVAS DE DAÑO DIFERENCIADAS
+# FILTRADO Y FÍSICA ESTRUCTURAL CON CURVAS DE DAÑO DIFERENCIADAS (MEJORA 4)
 active_df = df_parcels[df_parcels["municipality"].isin(selected_muns)].copy()
 
 extra_mota = 0.85 if (ruptura_mota and q_peak_simulated > 300.0) else 0.0
 active_df["active_depth"] = ((active_df["max_depth_m"] + extra_mota) * current_depth_factor).astype(np.float32)
 active_df["peak_depth_experienced"] = ((active_df["max_depth_m"] + extra_mota) * peak_damage_factor_reached).astype(np.float32)
 
-# MODELO FINANCIERO DINÁMICO POR TIPOLOGÍA DE ACTIVO CATASTRAL
+# Curvas de daño específicas por tipología de activo
 h_eval_loss = active_df["peak_depth_experienced"].to_numpy()
 types = active_df["asset_type"].to_numpy()
-
-# Curvas de daño sectoriales:
-# 1. Residencial: plantas bajas y sótanos vulnerables
-# 2. Industrial / Logística: afección por encima de solera técnica (0.4 m)
-# 3. Vehículos / Vados: flotabilidad y arrastre crítico a 0.35 m (pérdida total súbita)
-# 4. Infraestructura Pública: diseño más resistente pero alto coste reconstructivo
 ratios = np.zeros(len(active_df), dtype=np.float64)
 
 mask_res = (types == "Residencial")
@@ -690,7 +688,7 @@ tab_3d, tab_esalert, tab_compare, tab_hydro, tab_roads, tab_finances = st.tabs([
 ])
 
 # ------------------------------------------------------------------------------
-# TAB 1: VISOR 3D DECK.GL (CON ISOCRONAS DINÁMICAS DE EVACUACIÓN)
+# TAB 1: VISOR 3D DECK.GL CON COLUMNAS EXTRUIDAS Y LÍNEAS DE ISOCRONA HUECAS
 # ------------------------------------------------------------------------------
 with tab_3d:
     render_variable = st.radio(
@@ -700,13 +698,21 @@ with tab_3d:
         key="render_var_horizontal"
     )
 
-    if "Calado" in render_variable:
-        legend_html = "<div class='legend-box'><span style='color:#8b949e; font-weight:700;'>CALADO:</span><div class='legend-item'><span class='legend-bullet' style='background:#da3633;'></span> Ruina InSAR DPM</div><div class='legend-item'><span class='legend-bullet' style='background:#f85149;'></span> &ge; 1,50 m (Catastrófico)</div><div class='legend-item'><span class='legend-bullet' style='background:#f0883e;'></span> 0,80 - 1,50 m (Severo)</div><div class='legend-item'><span class='legend-bullet' style='background:#d29922;'></span> 0,30 - 0,80 m (Flotabilidad)</div><div class='legend-item'><span class='legend-bullet' style='background:#2ea043;'></span> 0,05 - 0,30 m (Leve)</div><div class='legend-item'><span class='legend-bullet' style='background:#388bfd;'></span> &lt; 0,05 m (Seco)</div><div class='legend-item'><span class='legend-bullet' style='background:#238636;'></span> Vía Operativa</div><div class='legend-item'><span class='legend-bullet' style='background:#d73a49;'></span> Vía Cortada</div><div class='legend-item'><span class='legend-bullet' style='background:#e3a93b;'></span> Centro Sensible</div><div class='legend-item'><span class='legend-bullet' style='background:#58a6ff; border-radius:50%;'></span> Hospital</div></div>"
-    elif "Pérdida" in render_variable:
-        legend_html = "<div class='legend-box'><span style='color:#8b949e; font-weight:700;'>DAÑO ECONÓMICO:</span><div class='legend-item'><span class='legend-bullet' style='background:#9c27b0;'></span> &ge; 150.000 € (Ruina Económica)</div><div class='legend-item'><span class='legend-bullet' style='background:#e53935;'></span> 75.000 - 150.000 € (Daño Grave)</div><div class='legend-item'><span class='legend-bullet' style='background:#fb8c00;'></span> 30.000 - 75.000 € (Daño Medio)</div><div class='legend-item'><span class='legend-bullet' style='background:#fdd835;'></span> 10.000 - 30.000 € (Daño Bajo)</div><div class='legend-item'><span class='legend-bullet' style='background:#43a047;'></span> &lt; 10.000 € (Residual)</div><div class='legend-item'><span class='legend-bullet' style='background:#30363d;'></span> Sin Pérdidas</div><div class='legend-item'><span class='legend-bullet' style='background:#238636;'></span> Vía Operativa</div><div class='legend-item'><span class='legend-bullet' style='background:#d73a49;'></span> Vía Cortada</div></div>"
-    else:
-        legend_html = "<div class='legend-box'><span style='color:#8b949e; font-weight:700;'>TRIAJE 112:</span><div class='legend-item'><span class='legend-bullet' style='background:#da3633;'></span> P1 Crítica (Rescate Inmediato / Ruina)</div><div class='legend-item'><span class='legend-bullet' style='background:#f0883e;'></span> P2 Alta (Evacuación Necesaria)</div><div class='legend-item'><span class='legend-bullet' style='background:#d29922;'></span> P3 Moderada (Lámina Menor)</div><div class='legend-item'><span class='legend-bullet' style='background:#238636;'></span> P4 Normal (Sin Afección)</div><div class='legend-item'><span class='legend-bullet' style='background:#d73a49;'></span> Vía Inutilizada</div><div class='legend-item'><span class='legend-bullet' style='background:#58a6ff; border-radius:50%;'></span> Hospital</div></div>"
-
+    legend_html = """
+    <div class='legend-box'>
+        <span style='color:#8b949e; font-weight:700;'>SIMBOLOGÍA 3D:</span>
+        <div class='legend-item'><span class='legend-bullet' style='background:#da3633;'></span> Calado Catastrófico / Ruina</div>
+        <div class='legend-item'><span class='legend-bullet' style='background:#f0883e;'></span> Calado Severo</div>
+        <div class='legend-item'><span class='legend-bullet' style='background:#d29922;'></span> Calado Medio</div>
+        <div class='legend-item'><span class='legend-bullet' style='background:#238636;'></span> Vía Operativa</div>
+        <div class='legend-item'><span class='legend-bullet' style='background:#d73a49;'></span> Vía Cortada</div>
+        <div class='legend-item'><span class='legend-bullet' style='background:#e3a93b;'></span> Centro Sensible</div>
+        <div class='legend-item'><span class='legend-bullet' style='background:#58a6ff; border-radius:50%;'></span> Hospital</div>
+        <div class='legend-item'><span style='color:#f85149; font-weight:bold;'>⭕</span> Isocrona 10 min</div>
+        <div class='legend-item'><span style='color:#f0883e; font-weight:bold;'>⭕</span> Isocrona 20 min</div>
+        <div class='legend-item'><span style='color:#3fb950; font-weight:bold;'>⭕</span> Isocrona 30 min</div>
+    </div>
+    """
     st.markdown(legend_html, unsafe_allow_html=True)
 
     if "Calado" in render_variable:
@@ -723,13 +729,13 @@ with tab_3d:
         r_c = np.select(condlist, [218, 248, 240, 210, 46], default=40)
         g_c = np.select(condlist, [54,  81,  136, 153, 160], default=65)
         b_c = np.select(condlist, [51,  73,  62,  34,  67], default=95)
-        a_c = np.select(condlist, [240, 220, 200, 180, 150], default=80)
+        a_c = np.select(condlist, [255, 235, 215, 195, 160], default=90)
         
         rgb_arr = np.column_stack([r_c, g_c, b_c, a_c]).astype(np.uint8)
         elevations = np.select(
             [c_eval, h_eval >= 0.30],
-            [np.maximum(h_eval * 22.0, 40.0), h_eval * 20.0 + 4.0],
-            default=np.clip(h_eval * 14.0 + 2.0, 2.0, 18.0)
+            [np.maximum(h_eval * 35.0, 70.0), h_eval * 30.0 + 8.0],
+            default=np.clip(h_eval * 20.0 + 4.0, 4.0, 30.0)
         )
 
     elif "Pérdida" in render_variable:
@@ -744,10 +750,10 @@ with tab_3d:
         r_c = np.select(condlist_loss, [156, 229, 251, 253, 67], default=40)
         g_c = np.select(condlist_loss, [39,  57,  140, 216, 160], default=50)
         b_c = np.select(condlist_loss, [176, 53,  0,   53,  71], default=65)
-        a_c = np.select(condlist_loss, [240, 220, 190, 170, 140], default=80)
+        a_c = np.select(condlist_loss, [255, 235, 205, 185, 150], default=90)
         
         rgb_arr = np.column_stack([r_c, g_c, b_c, a_c]).astype(np.uint8)
-        elevations = np.clip((l_col / 4200.0) + 4.0, 2.0, 120.0)
+        elevations = np.clip((l_col / 2500.0) + 6.0, 4.0, 160.0)
 
     else:
         p1_col = active_df["dynamic_p1"].to_numpy()
@@ -762,10 +768,10 @@ with tab_3d:
         r_c = np.select(condlist_triage, [218, 240, 210], default=35)
         g_c = np.select(condlist_triage, [54,  136, 153], default=134)
         b_c = np.select(condlist_triage, [51,  62,  34],  default=54)
-        a_c = np.select(condlist_triage, [240, 210, 180], default=120)
+        a_c = np.select(condlist_triage, [255, 220, 190], default=130)
         
         rgb_arr = np.column_stack([r_c, g_c, b_c, a_c]).astype(np.uint8)
-        elevations = np.select([p1_col, (h_tri >= 0.80)], [50.0, 25.0], default=6.0)
+        elevations = np.select([p1_col, (h_tri >= 0.80)], [80.0, 40.0], default=10.0)
 
     active_df["rgba"] = rgb_arr.tolist()
     active_df["elevation_m"] = elevations
@@ -791,14 +797,14 @@ with tab_3d:
             get_position=["lon", "lat"],
             get_elevation="elevation_m",
             elevation_scale=1,
-            radius=12,
+            radius=14,
             get_fill_color="rgba",
             pickable=True,
             auto_highlight=True,
         )
     ]
 
-    # Red viaria arterial realista
+    # Red viaria arterial conectada a los 3 hospitales metropolitanos
     if show_roads and realistic_roads:
         road_paths = []
         for r_item in realistic_roads:
@@ -827,7 +833,7 @@ with tab_3d:
                 "status_tag": reason,
                 "status_color": r_color_hex,
                 "color": col,
-                "width": 4 if edge_open else 8,
+                "width": 5 if edge_open else 8,
             })
         deck_layers.append(
             pdk.Layer(
@@ -842,7 +848,41 @@ with tab_3d:
             )
         )
 
-    # Centros Sensibles con evaluación dinámica
+    # ISOCRONAS DE EVACUACIÓN HUECAS (NO OPACAS: MANTIENEN VISIBLE EL 3D)
+    if show_isochrones:
+        origin_lon, origin_lat = -0.4190, 39.4230
+        penalizacion = max(0.18, 1.0 - (q_peak_simulated / 2200.0))
+        
+        iso_rings = [
+            {"time": "Isocrona 30 min (Perímetro Exterior)", "radius": 3200 * penalizacion, "color": [46, 160, 67, 240]},
+            {"time": "Isocrona 20 min (Perímetro Medio)", "radius": 2000 * penalizacion, "color": [240, 136, 62, 240]},
+            {"time": "Isocrona 10 min (Escape Inmediato)", "radius": 900 * penalizacion, "color": [218, 54, 51, 250]},
+        ]
+        
+        iso_df = pd.DataFrame(iso_rings)
+        iso_df["lon"] = origin_lon
+        iso_df["lat"] = origin_lat
+        iso_df["layer_title"] = iso_df["time"]
+        iso_df["metric_primary"] = f"Radio de cobertura: {int(iso_df['radius'].iloc[0])} m (Paiporta)"
+        iso_df["metric_secondary"] = f"Viabilidad de Escape: {int(penalizacion * 100)}% de margen"
+        iso_df["status_tag"] = "LÍMITE TEMPORAL DE EVACUACIÓN"
+        iso_df["status_color"] = "#58a6ff"
+
+        deck_layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=iso_df,
+                get_position=["lon", "lat"],
+                get_radius="radius",
+                filled=False,             # Totalmente hueco: no cubre las parcelas 3D
+                stroked=True,            # Contorno nítido
+                get_line_color="color",
+                line_width_min_pixels=2,
+                pickable=True,
+            )
+        )
+
+    # Centros Sensibles
     if show_vulnerable:
         eval_factor_vuln = peak_damage_factor_reached if "Forense" in sim_mode else current_depth_factor
         vuln_rows = []
@@ -884,53 +924,16 @@ with tab_3d:
             )
         )
 
-    # ISOCRONAS DE EVACUACIÓN DINÁMICAS (Contracción según calado en accesos)
-    if show_isochrones:
-        # Origen de referencia: Ayuntamiento de Paiporta (Zona Cero)
-        origin_lon, origin_lat = -0.4190, 39.4230
-        
-        # Factor de penalización por agua en viales urbanos
-        penalizacion = max(0.15, 1.0 - (q_peak_simulated / 2200.0))
-        
-        isochrone_rings = [
-            {"time": "30 min (Perímetro Exterior)", "radius": 3200 * penalizacion, "color": [46, 160, 67, 45]},
-            {"time": "20 min (Perímetro Medio)", "radius": 2000 * penalizacion, "color": [240, 136, 62, 55]},
-            {"time": "10 min (Escape Inmediato)", "radius": 900 * penalizacion, "color": [218, 54, 51, 65]},
-        ]
-        
-        iso_df = pd.DataFrame(isochrone_rings)
-        iso_df["lon"] = origin_lon
-        iso_df["lat"] = origin_lat
-        iso_df["layer_title"] = "Isocrona de Evacuación (Paiporta)"
-        iso_df["metric_primary"] = "Alcance: " + iso_df["time"]
-        iso_df["metric_secondary"] = f"Ventana de Seguridad: {int(penalizacion * 100)}% de viabilidad"
-        iso_df["status_tag"] = "RUTAS SEGURAS HACIA PUNTOS ALTOS"
-        iso_df["status_color"] = "#388bfd"
-
-        deck_layers.append(
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=iso_df,
-                get_position=["lon", "lat"],
-                get_radius="radius",
-                get_fill_color="color",
-                get_line_color=[255, 255, 255, 80],
-                line_width_min_pixels=1.5,
-                stroked=True,
-                pickable=True,
-            )
-        )
-
-    # Hospitales terciarios
+    # Hospitales terciarios metropolitanos
     if show_hospitals:
         hosp_data = []
         for h in [
             {"name": "H. Universitari i Politècnic La Fe", "lon": -0.3768, "lat": 39.4435, "beds": 1000},
             {"name": "H. General Universitari de València", "lon": -0.4072, "lat": 39.4682, "beds": 550},
-            {"name": "Hospital de Manises", "lon": -0.4608, "lat": 39.4930, "beds": 240},
+            {"name": "Hospital de Manises (Acceso Norte A-3)", "lon": -0.4608, "lat": 39.4930, "beds": 240},
         ]:
             if has_experienced_catastrophe:
-                h_status = "ALERTA MÁXIMA (ACCESOS BLOQUEADOS / SATURACIÓN CATÁSTROFE)"
+                h_status = "ALERTA MÁXIMA (COLAPSO DE ACCESOS METROPOLITANOS)"
                 h_col = [218, 54, 51, 240]
                 h_color_hex = "#f85149"
             elif q_peak_simulated >= 600.0:
@@ -959,7 +962,7 @@ with tab_3d:
                 data=hosp_df,
                 get_position=["lon", "lat"],
                 get_color="color",
-                get_radius=200,
+                get_radius=220,
                 pickable=True,
             )
         )
@@ -977,11 +980,10 @@ with tab_3d:
             )
         )
 
-    c_lat = float(active_df["lat"].mean()) if not active_df.empty else 39.4280
-    c_lon = float(active_df["lon"].mean()) if not active_df.empty else -0.4150
-    zoom_level = 13.4 if len(selected_muns) <= 2 else 12.6
-
-    camera = pdk.ViewState(latitude=c_lat, longitude=c_lon, zoom=zoom_level, pitch=48, bearing=-18)
+    # PERSPECTIVA 3D ISOMÉTRICA CON PITCH DE 55 GRADOS
+    c_lat = 39.4350
+    c_lon = -0.4150
+    camera = pdk.ViewState(latitude=c_lat, longitude=c_lon, zoom=12.8, pitch=55, bearing=-20)
 
     st.pydeck_chart(
         pdk.Deck(
@@ -1001,7 +1003,7 @@ with tab_3d:
         width="stretch"
     )
 
-    # BOTÓN DE DESCARGA DIRECTA DE CAPAS OPEN DATA GIS
+    # BOTÓN DE DESCARGA DIRECTA OPEN DATA GIS (MEJORA 3)
     export_df = active_df[["parcel_id", "municipality", "lon", "lat", "active_depth", "active_loss", "status_tag"]].copy()
     geojson_features = []
     for _, row in export_df.iterrows():
@@ -1225,7 +1227,7 @@ Medida de Mitigación Evaluada: {what_if}
             )
 
 # ------------------------------------------------------------------------------
-# TAB 3: AUDITORÍA FORENSE SPLIT A/B (NOWCAST VS REALIDAD 29-O)
+# TAB 3: AUDITORÍA FORENSE SPLIT A/B (MEJORA 5)
 # ------------------------------------------------------------------------------
 with tab_compare:
     st.subheader("Auditoría Forense Split A/B: POYO-NOWCAST vs. Realidad 29-O")
@@ -1315,7 +1317,7 @@ with tab_hydro:
         st.plotly_chart(fig_box, width="stretch")
 
 # ------------------------------------------------------------------------------
-# TAB 5: RESILIENCIA VIAL & TTI (MÓDULO 3 CON HISTÉRESIS DE INCOMUNICACIÓN)
+# TAB 5: RESILIENCIA VIAL & TTI (MÓDULO 3)
 # ------------------------------------------------------------------------------
 with tab_roads:
     st.subheader("Matriz Dinámica de Resiliencia Territorial & Time-to-Isolation (TTI)")
@@ -1368,7 +1370,7 @@ with tab_roads:
     )
 
 # ------------------------------------------------------------------------------
-# TAB 6: FINANZAS DEL CLIMA, CASCADA WATERFALL, ACTIVOS & SOLVENCIA II
+# TAB 6: FINANZAS DEL CLIMA & SOLVENCIA II
 # ------------------------------------------------------------------------------
 with tab_finances:
     st.subheader("Modelado Catastrófico, Reaseguro y Seguros Paramétricos (Solvencia II / EIOPA)")
@@ -1510,7 +1512,7 @@ st.markdown("<hr style='border:0.5px solid #21262d; margin:14px 0;'/>", unsafe_a
 st.markdown(
     """
     <div style='display: flex; justify-content: space-between; align-items: center; color: #8b949e; font-size: 0.78rem; flex-wrap: wrap; gap: 8px;'>
-        <div>POYO-NOWCAST: MÓDULO 5 GEMELO DIGITAL INTEGRADO | LICENCIA CC BY 4.0 OPEN SCIENCE</div>
+        <div>POYO-NOWCAST: PLATAFORMA C2 GEMELO DIGITAL INTEGRADO | LICENCIA CC BY 4.0 OPEN SCIENCE</div>
         <div>
             Desarrollado por: 
             <a href='https://www.linkedin.com/in/kelvinflores-ingenieria' target='_blank' style='color: #58a6ff; font-weight: 700; text-decoration: none;'>
