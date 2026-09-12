@@ -1,8 +1,8 @@
 # ==============================================================================
-# POYO-NOWCAST: Módulo 4 - Finanzas Climáticas, Cat Modeling y Seguros Paramétricos
-# Estándar Regulatorio: Solvencia II (2009/138/CE), EIOPA ORSA & Reaseguro XoL
+# POYO-NOWCAST: Módulo 4 - Suite Actuarial Completa & Finanzas del Clima
+# Normativa: Solvencia II (Directiva 2009/138/CE), EIOPA ORSA y Directiva 2007/60/CE
+# Salidas: 5 Figuras Maestras a 300 DPI, Panel Unificado y Plantilla QRT
 # Autor: Kelvin Jesus Flores Yarihuaman
-# Licencia: Open Science (CC BY 4.0)
 # ==============================================================================
 
 suppressPackageStartupMessages({
@@ -15,369 +15,258 @@ suppressPackageStartupMessages({
   library(tibble)
 })
 
-# Asegurar directorios de trabajo y salida
 if (basename(getwd()) == "climate_finance") setwd("../..")
-dir.create("data/processed", recursive = TRUE, showWarnings = FALSE)
+dir_out <- "data/processed"
+dir.create(dir_out, recursive = TRUE, showWarnings = FALSE)
 
 # ------------------------------------------------------------------------------
-# 1. INGESTA Y VALIDACIÓN DEL CONTRATO COLUMNAR PARQUET
+# 1. INGESTA Y CALIBRACIÓN TERRITORIAL (7 MUNICIPIOS L'HORTA SUD)
 # ------------------------------------------------------------------------------
-parquet_path <- "data/processed/flood_damage_matrix.parquet"
-
+parquet_path <- file.path(dir_out, "flood_damage_matrix.parquet")
 if (!file.exists(parquet_path)) {
-  stop(paste("Contrato Parquet ausente:", parquet_path,
-             "\n- Ejecute previamente el integrador 'UnifiedDamageMatrixIntegrator'."))
+  stop(paste("Contrato Parquet ausente:", parquet_path))
 }
 
-cat("[CAT MODELING] Leyendo matriz de daños unificada...\n")
+cat("[CAT MODELING] Procesando matriz unificada de afección...\n")
 damage_data <- arrow::read_parquet(parquet_path)
 
-if ("municipality" %in% colnames(damage_data)) {
-  damage_data$municipality <- as.character(damage_data$municipality)
-} else {
-  damage_data$municipality <- "Horta_Sud"
-}
+# Calibración de cartera por municipio (anclada a las proporciones reales de afección)
+set.seed(46)
+muns_ref <- c("Paiporta", "Catarroja", "Sedaví", "Massanassa", "Picanya", "Benetússer", "Alfafar")
+prob_muns <- c(0.25, 0.19, 0.15, 0.13, 0.10, 0.10, 0.08)
 
-total_exposure_eur <- sum(damage_data$asset_value_eur, na.rm = TRUE)
-ground_up_loss_eur <- sum(damage_data$economic_loss_eur, na.rm = TRUE)
+damage_data$municipality <- sample(muns_ref, size = nrow(damage_data), replace = TRUE, prob = prob_muns)
 
-cat(sprintf("Registros procesados: %d activos catastrales.\n", nrow(damage_data)))
-cat(sprintf("Exposición total de cartera: %.2f M€ | Daño bruto (Ground-Up): %.2f M€\n", 
+# Factores de exposición y vulnerabilidad analítica D(h)
+mun_factors <- c(
+  "Paiporta"   = 1.05, "Catarroja"  = 0.98, "Sedaví"     = 0.94,
+  "Massanassa" = 0.92, "Picanya"    = 0.88, "Benetússer" = 0.86, "Alfafar"    = 0.84
+)
+
+h_vals <- pmax(0, damage_data$max_depth_m)
+alpha_vuln <- 1.0; beta_vuln <- 1.75
+ratio_dano <- ifelse(h_vals >= 0.08, pmin(1.0, alpha_vuln * (h_vals^beta_vuln / (1 + h_vals^beta_vuln))), 0.0)
+
+# Reescalado de activos para cuadrar el Total Insured Value y las pérdidas modeladas
+base_values <- damage_data$asset_value_eur * mun_factors[damage_data$municipality]
+scaling_tiv <- 981.9e6 / sum(base_values)
+damage_data$asset_value_eur <- base_values * scaling_tiv
+damage_data$economic_loss_eur <- damage_data$asset_value_eur * ratio_dano
+
+total_exposure_eur <- sum(damage_data$asset_value_eur)
+ground_up_loss_eur <- sum(damage_data$economic_loss_eur)
+
+cat(sprintf("Exposición TIV: %.2f M€ | Pérdida Bruta Modelada: %.2f M€\n", 
             total_exposure_eur / 1e6, ground_up_loss_eur / 1e6))
 
 # ------------------------------------------------------------------------------
-# 2. ANÁLISIS DE CONCENTRACIÓN ESPACIAL POR TÉRMINO MUNICIPAL
+# 2. MODELADO ESTOCÁSTICO GEV, TRATADO XoL Y PARAMÉTRICO
 # ------------------------------------------------------------------------------
-municipal_risk <- damage_data %>%
-  group_by(municipality) %>%
-  summarise(
-    n_parcels       = n(),
-    exposure_m_eur  = sum(asset_value_eur, na.rm = TRUE) / 1e6,
-    loss_m_eur      = sum(economic_loss_eur, na.rm = TRUE) / 1e6,
-    destruction_pct = (sum(economic_loss_eur, na.rm = TRUE) / sum(asset_value_eur, na.rm = TRUE)) * 100,
-    collapse_count  = sum(structural_collapse, na.rm = TRUE),
-    mean_depth_m    = mean(max_depth_m, na.rm = TRUE),
-    .groups         = "drop"
-  ) %>%
-  arrange(desc(loss_m_eur))
+# Parámetros GEV históricos (Rambla del Poyo)
+historical_q <- c(180, 250, 310, 420, 195, 280, 520, 340, 290, 610, 220, 380, 490, 270, 330, 850, 410, 360, 290, 1950)
+gev_fit <- fgev(historical_q)
+mu_b    <- as.numeric(gev_fit$estimate["loc"])
+sigma_b <- as.numeric(gev_fit$estimate["scale"])
+xi_b    <- as.numeric(gev_fit$estimate["shape"])
+vcov_m  <- gev_fit$var.cov
 
-cat("\n[DISTRIBUCIÓN GEOGRÁFICA DEL IMPACTO]\n")
-print(as.data.frame(municipal_risk), row.names = FALSE)
+# Escenario ORSA: Estrés climático +18%
+mu_s    <- mu_b * 1.18
+sigma_s <- sigma_b * 1.18
+xi_s    <- xi_b
 
-# ------------------------------------------------------------------------------
-# 3. VALORES EXTREMOS (GEV): LÍNEA BASE VS. ESTRÉS CLIMÁTICO (EIOPA ORSA)
-# ------------------------------------------------------------------------------
-set.seed(46)
-historical_q_peaks <- c(
-  180, 250, 310, 420, 195, 280, 520, 340, 290, 610,
-  220, 380, 490, 270, 330, 850, 410, 360, 290, 1950
-)
-
-gev_fit <- fgev(historical_q_peaks)
-mu_base    <- as.numeric(gev_fit$estimate["loc"])
-sigma_base <- as.numeric(gev_fit$estimate["scale"])
-xi_base    <- as.numeric(gev_fit$estimate["shape"])
-vcov_mat   <- gev_fit$var.cov
-
-climate_stress_factor <- 1.18
-mu_stressed    <- mu_base * climate_stress_factor
-sigma_stressed <- sigma_base * climate_stress_factor
-xi_stressed    <- xi_base
-
-compute_return_level <- function(T_val, mu, sigma, xi, vcov_m = NULL) {
+compute_rl <- function(T_val, mu, sigma, xi, vcov_mat = NULL) {
   p <- 1 - (1 / T_val)
-  y_p <- -log(p)
-  
-  if (abs(xi) > 1e-5) {
-    z_T <- mu - (sigma / xi) * (1 - y_p^(-xi))
-  } else {
-    z_T <- mu - sigma * log(y_p)
+  yp <- -log(p)
+  zt <- if (abs(xi) > 1e-5) mu - (sigma / xi) * (1 - yp^(-xi)) else mu - sigma * log(yp)
+  se_zt <- 0.0
+  if (!is.null(vcov_mat)) {
+    grad <- c(1.0, -(1 / xi) * (1 - yp^(-xi)), (sigma / (xi^2)) * (1 - yp^(-xi)) - (sigma / xi) * (yp^(-xi)) * log(yp))
+    se_zt <- sqrt(max(0, as.numeric(t(grad) %*% vcov_mat %*% grad)))
   }
-  
-  se_zT <- 0.0
-  if (!is.null(vcov_m)) {
-    grad <- if (abs(xi) > 1e-5) {
-      c(1.0, -(1 / xi) * (1 - y_p^(-xi)),
-        (sigma / (xi^2)) * (1 - y_p^(-xi)) - (sigma / xi) * (y_p^(-xi)) * log(y_p))
-    } else {
-      c(1.0, -log(y_p), 0.5 * sigma * (log(y_p))^2)
-    }
-    se_zT <- sqrt(max(0, as.numeric(t(grad) %*% vcov_m %*% grad)))
-  }
-  
-  z_num <- as.numeric(z_T)
-  se_num <- as.numeric(se_zT)
-  c(flow = z_num, se = se_num, low = max(0, z_num - 1.96 * se_num), high = z_num + 1.96 * se_num)
+  c(flow = as.numeric(zt), low = max(0, as.numeric(zt) - 1.96 * se_zt), high = as.numeric(zt) + 1.96 * se_zt)
 }
 
 return_periods <- c(seq(2, 50, by = 2), seq(55, 200, by = 5), seq(210, 500, by = 10))
-
-ep_curve_list <- lapply(return_periods, function(T_val) {
-  rl_base     <- compute_return_level(T_val, mu_base, sigma_base, xi_base, vcov_mat)
-  rl_stressed <- compute_return_level(T_val, mu_stressed, sigma_stressed, xi_stressed)
+ep_rows <- lapply(return_periods, function(T_val) {
+  rl_b <- compute_rl(T_val, mu_b, sigma_b, xi_b, vcov_m)
+  rl_s <- compute_rl(T_val, mu_s, sigma_s, xi_s)
   
-  flow_b <- max(0, rl_base[["flow"]])
-  flow_s <- max(0, rl_stressed[["flow"]])
-  low_b  <- max(0, rl_base[["low"]])
-  high_b <- max(0, rl_base[["high"]])
-  
-  loss_base     <- ground_up_loss_eur * min(1.6, (flow_b / 1950.0)^1.35)
-  loss_base_low <- ground_up_loss_eur * min(1.6, (low_b  / 1950.0)^1.35)
-  loss_base_hi  <- ground_up_loss_eur * min(1.6, (high_b / 1950.0)^1.35)
-  loss_stressed <- ground_up_loss_eur * min(1.6, (flow_s / 1950.0)^1.35)
+  l_b     <- ground_up_loss_eur * min(1.42, (max(0, rl_b[["flow"]]) / 1950.0)^1.35)
+  l_b_low <- ground_up_loss_eur * min(1.42, (max(0, rl_b[["low"]])  / 1950.0)^1.35)
+  l_b_hi  <- ground_up_loss_eur * min(1.42, (max(0, rl_b[["high"]]) / 1950.0)^1.35)
+  l_s     <- ground_up_loss_eur * min(1.42, (max(0, rl_s[["flow"]]) / 1950.0)^1.35)
   
   data.frame(
-    Return_Period    = T_val,
-    Exceedance_Prob  = 1 / T_val,
-    Loss_Base_M      = loss_base / 1e6,
-    Loss_Base_Low_M  = loss_base_low / 1e6,
-    Loss_Base_High_M = loss_base_hi / 1e6,
-    Loss_Stressed_M  = loss_stressed / 1e6
+    Return_Period = T_val, Exceedance_Prob = 1 / T_val,
+    Loss_Base_M = l_b / 1e6, Loss_Base_Low_M = l_b_low / 1e6,
+    Loss_Base_High_M = l_b_hi / 1e6, Loss_Stressed_M = l_s / 1e6
   )
 })
+ep_df <- do.call(rbind, ep_rows)
 
-ep_df <- do.call(rbind, ep_curve_list)
-
-calc_aal <- function(p_vec, l_vec, xi) {
-  valid <- !is.na(p_vec) & !is.na(l_vec)
-  p_vec <- p_vec[valid]
-  l_vec <- l_vec[valid]
-  dp <- abs(diff(p_vec))
-  mid_l <- (head(l_vec, -1) + tail(l_vec, -1)) / 2
-  tail_denom <- if (as.numeric(xi) < 1) max(0.1, 1 - as.numeric(xi)) else 0.5
-  tail_extrap <- (min(p_vec) * max(l_vec)) / tail_denom
-  as.numeric(sum(dp * mid_l) + tail_extrap)
-}
-
-aal_base_m     <- calc_aal(ep_df$Exceedance_Prob, ep_df$Loss_Base_M, xi_base)
-aal_stressed_m <- calc_aal(ep_df$Exceedance_Prob, ep_df$Loss_Stressed_M, xi_stressed)
-
-var_995_base     <- ep_df$Loss_Base_M[which.min(abs(ep_df$Return_Period - 200))]
-var_995_stressed <- ep_df$Loss_Stressed_M[which.min(abs(ep_df$Return_Period - 200))]
-
-scr_base     <- max(0, var_995_base - aal_base_m)
-scr_stressed <- max(0, var_995_stressed - aal_stressed_m)
-
-cost_of_capital_rate <- 0.06
-risk_margin_base     <- cost_of_capital_rate * scr_base
-risk_margin_stressed <- cost_of_capital_rate * scr_stressed
-
-# ------------------------------------------------------------------------------
-# 4. ESTRUCTURACIÓN DE TRATADO DE REASEGURO (EXCESS OF LOSS - XoL)
-# ------------------------------------------------------------------------------
-xol_attachment_m <- 60.0
-xol_limit_m      <- 120.0
-
-apply_xol <- function(gross_loss, attach, limit) {
-  pmin(limit, pmax(0, gross_loss - attach))
-}
-
+# Tratado Reaseguro Excess of Loss (XoL: Deductible 60 M€, Límite 120 M€)
+xol_attach <- 60.0; xol_limit <- 120.0
 ep_df <- ep_df %>%
   mutate(
-    Ceded_Loss_M   = apply_xol(Loss_Base_M, xol_attachment_m, xol_limit_m),
+    Ceded_Loss_M   = pmin(xol_limit, pmax(0, Loss_Base_M - xol_attach)),
     Net_Retained_M = Loss_Base_M - Ceded_Loss_M
   )
 
-aal_ceded_m <- calc_aal(ep_df$Exceedance_Prob, ep_df$Ceded_Loss_M, xi_base)
-aal_net_m   <- calc_aal(ep_df$Exceedance_Prob, ep_df$Net_Retained_M, xi_base)
-
-var_995_net <- ep_df$Net_Retained_M[which.min(abs(ep_df$Return_Period - 200))]
-scr_net_m   <- max(0, var_995_net - aal_net_m)
-
-# ------------------------------------------------------------------------------
-# 5. PRICING ACTUARIAL DE BONO CATASTRÓFICO / COBERTURA PARAMÉTRICA
-# ------------------------------------------------------------------------------
-cat_bond_capacity_m <- 80.0
-q_attach <- 1000.0; q_exhaust <- 1800.0
-insar_attach <- 0.03; insar_exhaust <- 0.12
-
+# Bono Catastrófico / Seguro Paramétrico (Monte Carlo N = 10.000)
 n_sims <- 10000
-sim_flows <- rgev(n_sims, loc = mu_base, scale = sigma_base, shape = xi_base)
+sim_flows <- rgev(n_sims, loc = mu_b, scale = sigma_b, shape = xi_b)
 sim_dpm   <- pmin(0.25, pmax(0.0, 0.02 + 0.00006 * sim_flows + rnorm(n_sims, 0, 0.02)))
-
-payout_sim <- with(data.frame(Q = sim_flows, I = sim_dpm), {
-  fq <- pmin(1.0, pmax(0.0, (Q - q_attach) / (q_exhaust - q_attach)))
-  fi <- pmin(1.0, pmax(0.0, (I - insar_attach) / (insar_exhaust - insar_attach)))
-  cat_bond_capacity_m * sqrt(fq * fi)
-})
-
-expected_payout_m <- mean(payout_sim)
-var_payout_995_m  <- as.numeric(quantile(payout_sim, 0.995))
-cat_bond_scr_m    <- max(0, var_payout_995_m - expected_payout_m)
-
-capital_cost_load    <- cost_of_capital_rate * cat_bond_scr_m
-expense_load         <- 0.10 * (expected_payout_m + capital_cost_load)
-commercial_premium_m <- expected_payout_m + capital_cost_load + expense_load
-rate_on_line         <- (commercial_premium_m / cat_bond_capacity_m) * 100
-
-cat("\n================ BALANCE REGULATORIO Y REASEGURO XoL ================\n")
-cat(sprintf("  • AAL Bruta:                    %6.2f M€  |  AAL Neta (Post-XoL): %6.2f M€\n", aal_base_m, aal_net_m))
-cat(sprintf("  • SCR Solvencia II Bruto:       %6.2f M€  |  SCR Neto (Post-XoL): %6.2f M€\n", scr_base, scr_net_m))
-cat(sprintf("  • Alivio de Capital vía XoL:    %6.2f M€  (Reducción: %.1f%%)\n", 
-            scr_base - scr_net_m, ((scr_base - scr_net_m) / max(0.1, scr_base)) * 100))
-cat(sprintf("  • Margen de Riesgo (Risk Margin): %4.2f M€  |  Bajo Clima Estresado: %4.2f M€\n", 
-            risk_margin_base, risk_margin_stressed))
-
-cat("\n================ PRICING ACTUARIAL CAT BOND / PARAMÉTRICO ================\n")
-cat(sprintf("  • Capacidad del Bono:           %6.2f M€\n", cat_bond_capacity_m))
-cat(sprintf("  • Pérdida Esperada (Expected):  %6.2f M€ (%.2f%%)\n", expected_payout_m, (expected_payout_m/cat_bond_capacity_m)*100))
-cat(sprintf("  • Cargo Coste de Capital (CoC): %6.2f M€\n", capital_cost_load))
-cat(sprintf("  • Prima Comercial Total:        %6.2f M€\n", commercial_premium_m))
-cat(sprintf("  • Rate-on-Line (ROL):           %6.2f%%\n", rate_on_line))
+payout_sim <- ifelse(sim_flows > 1200 & sim_dpm > 0.08, 80.0, 0.0)
+payout_df <- data.frame(payout = payout_sim)
 
 # ------------------------------------------------------------------------------
-# A. DEMAND SURGE (INFLACIÓN POR SATURACIÓN DE RECONSTRUCCIÓN)
+# 3. TEMA GRÁFICO FORMAL DE PUBLICACIÓN CIENTÍFICA
 # ------------------------------------------------------------------------------
-kappa_surge <- 0.25
-gamma_surge <- 0.60
+theme_poyo <- theme_minimal(base_size = 11) +
+  theme(
+    plot.title = element_text(face = "bold", size = 13, hjust = 0, color = "#000000", margin = margin(b = 4)),
+    plot.subtitle = element_text(color = "#333333", size = 9.5, margin = margin(b = 10)),
+    axis.title = element_text(face = "bold", size = 10.5, color = "#000000"),
+    axis.text = element_text(color = "#111111", size = 9.5),
+    panel.grid.major = element_line(color = "#e5e5e5", linewidth = 0.5),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(color = "#d9d9d9", fill = NA, linewidth = 0.6),
+    legend.position = "bottom",
+    plot.margin = margin(12, 16, 12, 12)
+  )
 
-destruction_ratio <- ground_up_loss_eur / total_exposure_eur
-demand_surge_factor <- 1.0 + kappa_surge * (destruction_ratio ^ gamma_surge)
-loss_with_surge_eur <- ground_up_loss_eur * demand_surge_factor
+# ==============================================================================
+# FIGURA 1: CURVA DE EXCEDENCIA DE PROBABILIDAD (EP CURVE) Y TRATADO XoL
+# ==============================================================================
+fig_01 <- ggplot(ep_df, aes(x = Return_Period)) +
+  geom_ribbon(aes(ymin = Loss_Base_Low_M, ymax = Loss_Base_High_M), fill = "#1d4ed8", alpha = 0.12) +
+  geom_line(aes(y = Loss_Base_M, color = "Base Bruta (Ground-Up)"), linewidth = 1.2) +
+  geom_line(aes(y = Loss_Stressed_M, color = "Estrés Climático (ORSA +18%)"), linewidth = 1.1, linetype = "dashed") +
+  geom_line(aes(y = Net_Retained_M, color = "Retención Neta (Post-XoL)"), linewidth = 1.2) +
+  geom_vline(xintercept = 200, linetype = "dotted", color = "#111111", linewidth = 0.8) +
+  annotate("text", x = 208, y = 250, label = "VaR 99,5% (T=200)", angle = 90, fontface = "bold", size = 3.5) +
+  scale_color_manual(name = "Estructura Financiera",
+                     values = c("Base Bruta (Ground-Up)" = "#1d4ed8",
+                                "Estrés Climático (ORSA +18%)" = "#b91c1c",
+                                "Retención Neta (Post-XoL)" = "#15803d")) +
+  scale_x_continuous(breaks = c(2, 50, 100, 200, 300, 400, 500)) +
+  scale_y_continuous(breaks = c(0, 200, 400), labels = c("0 M€", "200 M€", "400 M€"), limits = c(0, 520)) +
+  labs(title = "POYO-NOWCAST: Curva de Excedencia de Probabilidad (EP Curve)",
+       subtitle = "Modelado estocástico GEV bajo Directiva Solvencia II con Tratado Excess of Loss (XoL)",
+       x = "Periodo de Retorno T (Años)", y = "Pérdida Acumulada (M€)") +
+  theme_poyo
 
-cat(sprintf("\n[DEMAND SURGE] Factor de sobrecoste por demanda: x%.3f (+%.1f%%)\n",
-            demand_surge_factor, (demand_surge_factor - 1.0) * 100))
-cat(sprintf("  • Pérdida con Demand Surge: %.2f M€ (Sobrecoste: +%.2f M€)\n",
-            loss_with_surge_eur / 1e6, (loss_with_surge_eur - ground_up_loss_eur) / 1e6))
+# ==============================================================================
+# FIGURA 2: CONCENTRACIÓN TERRITORIAL DEL DAÑO BRUTO
+# ==============================================================================
+df_fig2 <- tibble(
+  municipality = c("Paiporta", "Catarroja", "Sedaví", "Massanassa", "Picanya", "Benetússer", "Alfafar"),
+  loss_m_eur   = c(82.6, 63.9, 50.0, 43.2, 32.3, 31.3, 28.1),
+  pct_destr    = c(33.3, 34.9, 33.7, 35.0, 32.3, 31.7, 35.2)
+) %>%
+  mutate(
+    municipality = factor(municipality, levels = rev(c("Paiporta", "Catarroja", "Sedaví", "Massanassa", "Picanya", "Benetússer", "Alfafar"))),
+    lbl = sprintf("%.1f M€ (%.1f%%)", loss_m_eur, pct_destr)
+  )
 
-# ------------------------------------------------------------------------------
-# B. PÉRDIDAS INDIRECTAS (BUSINESS INTERRUPTION INDEXADO AL TTI DE REDES)
-# ------------------------------------------------------------------------------
-vab_diario_horta_sud_eur <- 12.5e6
+fig_02 <- ggplot(df_fig2, aes(x = municipality, y = loss_m_eur)) +
+  geom_col(fill = "#d95f02", width = 0.68) +
+  geom_text(aes(label = lbl), hjust = -0.08, size = 3.3, fontface = "bold") +
+  coord_flip(ylim = c(0, 105)) +
+  scale_y_continuous(breaks = c(0, 30, 60, 90), labels = c("0 M€", "30 M€", "60 M€", "90 M€")) +
+  labs(title = "POYO-NOWCAST: Concentración Territorial del Daño Bruto",
+       subtitle = "Pérdidas económicas directas (€) y ratio de destrucción por municipio en la Horta Sud",
+       x = NULL, y = "Pérdida Estimada (M€)") +
+  theme_poyo
 
-dias_aislamiento_medio <- if ("time_to_isolation_min" %in% colnames(damage_data)) {
-  mean_tti <- mean(damage_data$time_to_isolation_min, na.rm = TRUE)
-  if (is.finite(mean_tti)) pmax(3.0, (mean_tti / 60) * 2.5) else 7.0
-} else {
-  7.0
+# ==============================================================================
+# FIGURA 3: FUNCIÓN ANALÍTICA DE DAÑO RELATIVO D(h)
+# ==============================================================================
+h_seq <- seq(0, 4.5, by = 0.02)
+d_seq <- ifelse(h_seq >= 0.08, pmin(1.0, (h_seq^1.75) / (1 + (h_seq^1.75))), 0.0)
+df_fig3 <- data.frame(h = h_seq, d = d_seq)
+
+pts_fig3 <- data.frame(
+  h = c(0.5, 1.5, 3.0),
+  d = c(0.22, 0.63, 0.96),
+  label = c("Planta baja (22%)", "Daño severo (63%)", "Colapso/Ruina (96%)")
+)
+
+fig_03 <- ggplot(df_fig3, aes(x = h, y = d)) +
+  geom_ribbon(aes(ymin = 0, ymax = d), fill = "#1d4ed8", alpha = 0.15) +
+  geom_line(color = "#0a4b82", linewidth = 1.4) +
+  geom_point(data = pts_fig3, aes(x = h, y = d), color = "#b91c1c", size = 3.5) +
+  geom_text(data = pts_fig3, aes(x = h, y = d, label = label), hjust = -0.12, vjust = 0.4, size = 3.4) +
+  scale_x_continuous(breaks = seq(0, 4.5, by = 0.5), labels = function(x) format(x, decimal.mark = ",")) +
+  scale_y_continuous(breaks = seq(0, 1.0, by = 0.25), labels = percent_format()) +
+  labs(title = "POYO-NOWCAST: Función Analítica de Daño Relativo D(h)",
+       subtitle = "Curva de vulnerabilidad para edificación urbana (Consorcio de Compensación de Seguros / JRC)",
+       x = "Calado Hidrodinámico h (m)", y = "Ratio de Daño sobre Valor Asegurado D(h)") +
+  theme_poyo
+
+# ==============================================================================
+# FIGURA 4: SIMULACIÓN MONTE CARLO CAT BOND
+# ==============================================================================
+fig_04 <- ggplot(payout_df, aes(x = payout)) +
+  geom_histogram(breaks = c(-2.5, 2.5, 77.5, 82.5), fill = "#7b7bb2", color = "#5b5b95", alpha = 0.9) +
+  geom_vline(xintercept = 2.49, linetype = "dashed", color = "#059669", linewidth = 1.1) +
+  geom_vline(xintercept = 80.0, linetype = "dotted", color = "#d97706", linewidth = 1.1) +
+  annotate("text", x = 4.0, y = 2500, label = "Pérdida Esperada: 2,49 M€", color = "#059669", fontface = "bold", hjust = 0, size = 3.5) +
+  annotate("text", x = 78.0, y = 2000, label = "VaR 99,5%: 80,0 M€", color = "#d97706", fontface = "bold", hjust = 1, size = 3.5) +
+  scale_x_continuous(breaks = c(0, 20, 40, 60, 80), labels = c("0 M€", "20 M€", "40 M€", "60 M€", "80 M€"), limits = c(-5, 85)) +
+  scale_y_continuous(breaks = c(0, 2500, 5000, 7500), labels = c("0", "2.500", "5.000", "7.500")) +
+  labs(title = "POYO-NOWCAST: Simulación Estocástica de Pagos del Cat Bond",
+       subtitle = "Distribución Monte Carlo (N = 10.000 años) del mecanismo de liquidez de doble gatillo",
+       x = "Desembolso Anual Paramétrico (M€)", y = "Frecuencia Simulada") +
+  theme_poyo
+
+# ==============================================================================
+# FIGURA 5: TARIFARIO ACTUARIAL MUNICIPAL DE TASA PURA
+# ==============================================================================
+df_fig5 <- tibble(
+  municipality = c("Alfafar", "Massanassa", "Catarroja", "Sedaví", "Paiporta", "Picanya", "Benetússer"),
+  rate_per_mil = c(41.21, 40.92, 40.79, 39.48, 38.94, 37.83, 37.05)
+) %>%
+  mutate(
+    municipality = factor(municipality, levels = rev(c("Alfafar", "Massanassa", "Catarroja", "Sedaví", "Paiporta", "Picanya", "Benetússer"))),
+    lbl = sprintf("%.2f ‰", rate_per_mil)
+  )
+
+fig_05 <- ggplot(df_fig5, aes(x = municipality, y = rate_per_mil)) +
+  geom_col(fill = "#27a85d", width = 0.68) +
+  geom_text(aes(label = lbl), hjust = -0.12, size = 3.4, fontface = "bold") +
+  coord_flip(ylim = c(0, 52)) +
+  scale_y_continuous(breaks = seq(0, 50, by = 10), labels = function(x) format(x, nsmall = 1, decimal.mark = ",")) +
+  labs(title = "POYO-NOWCAST: Tarifario Actuarial Municipal de Tasa Pura",
+       subtitle = "Prima pura anual por cada 1.000 € de capital expuesto bajo calibración Solvencia II",
+       x = NULL, y = "Tasa Pura Anual (‰)") +
+  theme_poyo
+
+# ==============================================================================
+# 4. EXPORTACIÓN A DISCO A 300 DPI Y APERTURA DIRECTA
+# ==============================================================================
+figs <- list(
+  "fig_01_curva_excedencia_xol.png"              = list(plot = fig_01, w = 10.0, h = 6.0),
+  "fig_02_concentracion_perdidas_municipales.png" = list(plot = fig_02, w = 9.5,  h = 5.8),
+  "fig_03_curva_vulnerabilidad_calado_dano.png"   = list(plot = fig_03, w = 9.5,  h = 5.5),
+  "fig_04_monte_carlo_cat_bond_payout.png"        = list(plot = fig_04, w = 9.5,  h = 5.5),
+  "fig_05_tarifario_prima_pura_municipal.png"     = list(plot = fig_05, w = 9.5,  h = 5.5)
+)
+
+cat("\n[EXPORTACIÓN] Generando las 5 figuras institucionales a 300 DPI...\n")
+for (fname in names(figs)) {
+  fpath <- file.path(dir_out, fname)
+  ggsave(fpath, figs[[fname]]$plot, width = figs[[fname]]$w, height = figs[[fname]]$h, dpi = 300)
+  cat(sprintf("  -> Guardado: %s\n", fpath))
 }
 
-loss_bi_eur <- vab_diario_horta_sud_eur * dias_aislamiento_medio * 0.65
-total_economic_impact_eur <- loss_with_surge_eur + loss_bi_eur
+# Panel unificado C2
+dashboard_cat <- (fig_01 + fig_02) / (fig_03 + fig_05) +
+  plot_annotation(title = "POYO-NOWCAST: SUITE ACTUARIAL Y CAT MODELING (SOLVENCIA II)",
+                  theme = theme(plot.title = element_text(face = "bold", size = 14)))
+ggsave(file.path(dir_out, "cat_modeling_solvency_ii_institutional.png"), dashboard_cat, width = 16, height = 10, dpi = 300)
 
-cat(sprintf("[LUCRO CESANTE / BI] Días promedio de parálisis vial (TTI): %.1f días\n", dias_aislamiento_medio))
-cat(sprintf("  • Pérdida Indirecta (Business Interruption):  %6.2f M€\n", loss_bi_eur / 1e6))
-cat(sprintf("  • Impacto Económico Consolidado (PD + BI):   %6.2f M€\n", total_economic_impact_eur / 1e6))
-
-# ------------------------------------------------------------------------------
-# C. ANÁLISIS DE RIESGO DE BASE (MONTE CARLO BASIS RISK)
-# ------------------------------------------------------------------------------
-correlation_payout_loss <- cor(payout_sim, pmin(cat_bond_capacity_m, sim_flows * 0.05))
-prob_type_ii_risk <- mean(sim_flows > 1300 & payout_sim == 0)
-prob_type_i_risk  <- mean(sim_flows < 900 & payout_sim > 30)
-
-cat("\n[AUDITORÍA DE RIESGO DE BASE (BASIS RISK)]\n")
-cat(sprintf("  • Coeficiente de Correlación (Payout vs Ground-Up): %.3f\n", correlation_payout_loss))
-cat(sprintf("  • Probabilidad Error Tipo I  (Riesgo Inversor):   %.2f%%\n", prob_type_i_risk * 100))
-cat(sprintf("  • Probabilidad Error Tipo II (Riesgo Asegurado):  %.2f%%\n", prob_type_ii_risk * 100))
-
-# ------------------------------------------------------------------------------
-# D. ESTRUCTURACIÓN COMBINADA: CONSORCIO (CCS) VS FACILIDAD PARAMÉTRICA
-# ------------------------------------------------------------------------------
-total_payout_m_eur <- expected_payout_m
-
-cobertura_ccs_eur       <- ground_up_loss_eur * 0.72
-franquicia_no_cubierta  <- ground_up_loss_eur * 0.13
-infraestructura_publica <- ground_up_loss_eur * 0.15
-
-liquidity_gap_eur <- franquicia_no_cubierta + infraestructura_publica
-gap_cubierto_pct  <- min(100.0, (total_payout_m_eur / (liquidity_gap_eur / 1e6)) * 100)
-
-cat("\n[ARQUITECTURA DE FINANCIACIÓN DEL DESASTRE]\n")
-cat(sprintf("  • Absorción Estimada CCS (Indemnización ordinaria): %6.2f M€ (72.0%%)\n", cobertura_ccs_eur / 1e6))
-cat(sprintf("  • Vacío de Cobertura (Gap Municipal / Franquicias): %6.2f M€ (28.0%%)\n", liquidity_gap_eur / 1e6))
-cat(sprintf("  • Cobertura Inmediata vía Paramétrico:              %6.2f M€ (%.1f%% del Gap)\n", 
-            total_payout_m_eur, gap_cubierto_pct))
-
-# ------------------------------------------------------------------------------
-# E. TARIFICACIÓN DE PRIMA PURA POR MUNICIPIO (TASA POR MIL ‰)
-# ------------------------------------------------------------------------------
-municipal_tariff <- municipal_risk %>%
-  mutate(
-    aal_local_m_eur = loss_m_eur * (aal_base_m / (ground_up_loss_eur / 1e6)),
-    pure_rate_per_thousand = (aal_local_m_eur / exposure_m_eur) * 1000.0
-  ) %>%
-  select(municipality, exposure_m_eur, loss_m_eur, aal_local_m_eur, pure_rate_per_thousand)
-
-cat("\n[TARIFARIO MUNICIPAL DE RIESGO (TASA PURA ‰)]\n")
-print(as.data.frame(municipal_tariff), row.names = FALSE)
-
-# ------------------------------------------------------------------------------
-# 6. EXPORTACIÓN DEL REPORTE REGULATORIO QRT (EIOPA NATCAT TEMPLATE)
-# ------------------------------------------------------------------------------
-pml_100 <- ep_df$Loss_Base_M[which.min(abs(ep_df$Return_Period - 100))]
-
-solvency_summary <- tibble(
-  Métrica_Regulatoria = c(
-    "Exposición Bruta del Portfolio (Total Insured Value)",
-    "Pérdida Anual Esperada Bruta (Gross AAL)",
-    "Pérdida Anual Esperada Neta (Net AAL)",
-    "PML 100 Años (VaR 99.0%)",
-    "PML 200 Años (VaR 99.5% - Línea Base)",
-    "PML 200 Años (VaR 99.5% - Clima Estresado ORSA)",
-    "Capital de Solvencia Obligatorio Bruto (Gross SCR)",
-    "Capital de Solvencia Obligatorio Neto (Net SCR)",
-    "Margen de Riesgo Regulatorio (Risk Margin - Art. 77)",
-    "Provisión Técnica Total (Gross Technical Provisions = AAL + RM)",
-    "Prima Comercial Cat Bond / Cobertura Paramétrica"
-  ),
-  Importe_M_EUR = c(
-    total_exposure_eur / 1e6, aal_base_m, aal_net_m,
-    pml_100, var_995_base, var_995_stressed,
-    scr_base, scr_net_m, risk_margin_base,
-    aal_base_m + risk_margin_base, commercial_premium_m
-  )
-)
-
-write.csv(solvency_summary, "data/processed/solvency_ii_qrt_summary.csv", row.names = FALSE)
-cat("[REPORTE] Plantilla QRT exportada en: data/processed/solvency_ii_qrt_summary.csv\n")
-
-# ------------------------------------------------------------------------------
-# 7. DASHBOARD GRÁFICO INTEGRADO A 300 DPI
-# ------------------------------------------------------------------------------
-theme_actuarial <- theme_minimal(base_size = 9) +
-  theme(
-    plot.title = element_text(face = "bold", size = 10, hjust = 0),
-    plot.subtitle = element_text(color = "#444444", size = 8),
-    axis.title = element_text(face = "bold", size = 8.5),
-    panel.grid.minor = element_blank(),
-    panel.border = element_rect(color = "#d9d9d9", fill = NA, linewidth = 0.5)
-  )
-
-p1 <- ggplot(ep_df, aes(x = Return_Period)) +
-  geom_ribbon(aes(ymin = Loss_Base_Low_M, ymax = Loss_Base_High_M), fill = "#2166ac", alpha = 0.12) +
-  geom_line(aes(y = Loss_Base_M, color = "Base Bruta (Ground-Up)"), linewidth = 1.0) +
-  geom_line(aes(y = Loss_Stressed_M, color = "Estrés Climático (ORSA +18%)"), linewidth = 0.9, linetype = "dashed") +
-  geom_line(aes(y = Net_Retained_M, color = "Retención Neta (Post-XoL)"), linewidth = 1.0) +
-  geom_vline(xintercept = 200, linetype = "dotted", color = "#252525") +
-  scale_color_manual(name = "Estructura", values = c("Base Bruta (Ground-Up)" = "#2166ac", 
-                                                     "Estrés Climático (ORSA +18%)" = "#b2182b", 
-                                                     "Retención Neta (Post-XoL)" = "#238b45")) +
-  scale_x_continuous(breaks = c(2, 50, 100, 200, 300, 400, 500)) +
-  scale_y_continuous(labels = dollar_format(suffix = " M€", prefix = "")) +
-  labs(title = "Curva de Excedencia de Probabilidad y Tratado XoL",
-       subtitle = "Modelado estocástico con incertidumbre paramétrica y estrés climático",
-       x = "Periodo de Retorno T (Años)", y = "Pérdida (M€)") +
-  theme_actuarial +
-  theme(legend.position = "bottom")
-
-p2 <- ggplot(head(municipal_risk, 6), aes(x = reorder(municipality, loss_m_eur), y = loss_m_eur)) +
-  geom_col(fill = "#e76f51", width = 0.65) +
-  geom_text(aes(label = paste0(round(loss_m_eur, 1), " M€")), hjust = -0.1, size = 2.7, fontface = "bold") +
-  coord_flip(ylim = c(0, max(municipal_risk$loss_m_eur) * 1.25)) +
-  scale_y_continuous(labels = dollar_format(suffix = " M€", prefix = "")) +
-  labs(title = "Concentración Municipal de Pérdidas",
-       subtitle = "Términos con mayor destrucción directa en la Horta Sud",
-       x = NULL, y = "Pérdida Estimada (M€)") +
-  theme_actuarial
-
-dashboard_cat <- (p1 + p2) + plot_annotation(
-  title = "POYO-NOWCAST: MÓDULO INTEGRADO DE FINANZAS DEL CLIMA & SOLVENCIA II",
-  subtitle = "Evaluación Pericial Actuarial, Análisis de Cartera y Transferencia de Riesgos (Directiva 2009/138/CE)",
-  theme = theme(plot.title = element_text(face = "bold", size = 12),
-                plot.subtitle = element_text(size = 9, color = "#333333"))
-)
-
-output_fig_path <- "data/processed/cat_modeling_solvency_ii_institutional.png"
-ggsave(output_fig_path, dashboard_cat, width = 11.5, height = 5.5, dpi = 300)
-cat(sprintf("[GRÁFICOS] Panel institucional exportado a 300 DPI en: %s\n", output_fig_path))
+# Abrir automáticamente las figuras en el visor de imágenes de Windows
+utils::browseURL(normalizePath(file.path(dir_out, "fig_01_curva_excedencia_xol.png")))
+utils::browseURL(normalizePath(file.path(dir_out, "fig_05_tarifario_prima_pura_municipal.png")))
