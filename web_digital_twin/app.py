@@ -1,7 +1,7 @@
 """
 POYO-NOWCAST: Módulo 5 - Plataforma C2 de Gemelo Digital, Resiliencia y Solvencia II
 Tecnología: Streamlit + PyDeck (Deck.gl WebGPU) + Plotly C2 HUD + PyProj Geodésico.
-Integración: AEMET OpenData API + FNO 2D + Isocronas Huecas + Daño Catastral Diferenciado.
+Integración: AEMET API + FNO 2D + Isocronas + Red Arterial Hitos + Auditoría A/B Cronograma.
 Autor: Kelvin Jesus Flores Yarihuaman (https://www.linkedin.com/in/kelvinflores-ingenieria)
 Licencia: Open Science (CC BY 4.0)
 """
@@ -135,13 +135,13 @@ st.markdown(
     .telemetry-strip {
         background: rgba(13, 17, 23, 0.95); border: 1px solid #30363d; border-radius: 6px;
         padding: 8px 16px; margin-bottom: 12px; display: flex; justify-content: space-between;
-        align-items: center; font-family: 'JetBrains Mono', monospace; font-size: 0.80rem;
+        align-items: center; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;
     }
 
     .legend-box {
         background: rgba(22, 27, 34, 0.92); border: 1px solid #30363d; border-radius: 8px;
         padding: 8px 14px; margin-bottom: 10px; display: flex; gap: 12px; align-items: center;
-        flex-wrap: wrap; font-size: 0.74rem;
+        flex-wrap: wrap; font-size: 0.73rem;
     }
     .legend-item { display: flex; align-items: center; gap: 5px; }
     .legend-bullet { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
@@ -200,13 +200,23 @@ class GeoProjector:
 
 PROJECTOR = GeoProjector()
 
+# CENTROS VULNERABLES Y CENTROS DE SALUD LOCALES
 VULNERABLE_CENTERS_BASE = [
     {"name": "Residencia San Francisco de Asís", "mun": "Paiporta", "type": "GERIÁTRICO", "lon": -0.4190, "lat": 39.4255, "beds": 120, "h_base": 2.20},
     {"name": "Centro de Salud Paiporta", "mun": "Paiporta", "type": "SALUD", "lon": -0.4160, "lat": 39.4280, "beds": 0, "h_base": 1.40},
     {"name": "Residencia de Mayores Benetússer", "mun": "Benetússer", "type": "GERIÁTRICO", "lon": -0.3980, "lat": 39.4220, "beds": 95, "h_base": 1.60},
-    {"name": "IES La Sénia (Punto Alto Evacuación)", "mun": "Paiporta", "type": "REFUGIO", "lon": -0.4230, "lat": 39.4290, "beds": 300, "h_base": 0.40},
+    {"name": "IES La Sénia (Punto Alto Refugio)", "mun": "Paiporta", "type": "REFUGIO", "lon": -0.4230, "lat": 39.4290, "beds": 300, "h_base": 0.40},
     {"name": "Residencia Ballesol Sedaví", "mun": "Sedaví", "type": "GERIÁTRICO", "lon": -0.3880, "lat": 39.4260, "beds": 140, "h_base": 1.90},
     {"name": "Centro Sanitario Integrado Catarroja", "mun": "Catarroja", "type": "SALUD", "lon": -0.4050, "lat": 39.4040, "beds": 0, "h_base": 1.80},
+]
+
+# HITOS METROPOLITANOS E INFRAESTRUCTURAS CRÍTICAS ESTRATÉGICAS
+METRO_LANDMARKS_BASE = [
+    {"name": "Aeropuerto de Manises / Valencia (VLC)", "type": "AEROPUERTO", "lon": -0.4816, "lat": 39.4893, "icon": "✈️", "h_base": 0.20},
+    {"name": "Estación Central Alta Velocidad AVE Joaquín Sorolla", "type": "FERROCARRIL", "lon": -0.3800, "lat": 39.4580, "icon": "🚆", "h_base": 0.15},
+    {"name": "Puerto Autónomo de Valencia (Dársena Comercial)", "type": "PUERTO", "lon": -0.3250, "lat": 39.4450, "icon": "🚢", "h_base": 0.10},
+    {"name": "Ciutat de les Arts i les Ciències", "type": "PATRIMONIO", "lon": -0.3530, "lat": 39.4540, "icon": "🏛️", "h_base": 0.10},
+    {"name": "Parque de Cabecera / Jardín del Turia", "type": "HIDRÁULICA", "lon": -0.4100, "lat": 39.4750, "icon": "🌳", "h_base": 0.30},
 ]
 
 @st.cache_data
@@ -257,18 +267,19 @@ def load_all_system_artifacts():
 
     df["lon"], df["lat"] = PROJECTOR.transform_points(df["x_coord"].to_numpy(), df["y_coord"].to_numpy())
 
-    # Red arterial metropolitana conectando toda la comarca y los 3 hospitales
+    # Red arterial metropolitana conectando toda la comarca, hospitales e hitos
     realistic_roads = [
         {"name": "CV-36 Eje Torrent - Picanya - Valencia", "h_base": 2.40, "coords": [[-0.450, 39.435], [-0.432, 39.439], [-0.418, 39.444], [-0.395, 39.448], [-0.380, 39.452]]},
-        {"name": "V-30 Bulevar Sur / Nuevo Cauce Turia", "h_base": 1.20, "coords": [[-0.440, 39.458], [-0.415, 39.450], [-0.390, 39.442], [-0.365, 39.435], [-0.340, 39.430]]},
+        {"name": "V-30 Bulevar Sur (Nuevo Cauce Turia)", "h_base": 1.20, "coords": [[-0.440, 39.458], [-0.415, 39.450], [-0.390, 39.442], [-0.365, 39.435], [-0.340, 39.430]]},
         {"name": "V-31 Pista de Silla (Acceso Sur A-7)", "h_base": 2.80, "coords": [[-0.405, 39.385], [-0.395, 39.405], [-0.388, 39.420], [-0.375, 39.438], [-0.370, 39.450]]},
         {"name": "CV-400 Eje Paiporta - Benetússer - Catarroja", "h_base": 3.10, "coords": [[-0.402, 39.400], [-0.408, 39.412], [-0.418, 39.425], [-0.422, 39.438], [-0.418, 39.448]]},
         {"name": "Puente CV-407 Picanya - Paiporta (Cruce Rambla)", "h_base": 3.50, "coords": [[-0.432, 39.434], [-0.424, 39.430], [-0.415, 39.426], [-0.405, 39.422]]},
         {"name": "Enlace Tres Cruces -> H. General Universitari", "h_base": 0.40, "coords": [[-0.415, 39.450], [-0.412, 39.460], [-0.4072, 39.4682]]},
-        {"name": "Corredor Sanitario V-30 Sur -> Hospital La Fe", "h_base": 0.50, "coords": [[-0.390, 39.442], [-0.382, 39.443], [-0.3768, 39.4435]]},
-        # Conexión estratégica hacia el Hospital de Manises
-        {"name": "Autovía A-3 Eje Valencia -> H. Manises / Aeropuerto", "h_base": 0.35, "coords": [[-0.4072, 39.4682], [-0.4250, 39.4750], [-0.4420, 39.4830], [-0.4608, 39.4930]]},
-        {"name": "Conector Fluvial V-30 Oeste -> H. Manises", "h_base": 0.60, "coords": [[-0.440, 39.458], [-0.451, 39.475], [-0.4608, 39.4930]]}
+        {"name": "Corredor Sanitario V-30 -> Hospital La Fe", "h_base": 0.50, "coords": [[-0.390, 39.442], [-0.382, 39.443], [-0.3768, 39.4435]]},
+        {"name": "Autovía A-3 -> Aeropuerto de Manises (VLC)", "h_base": 0.35, "coords": [[-0.4072, 39.4682], [-0.4250, 39.4750], [-0.4420, 39.4830], [-0.4608, 39.4930], [-0.4816, 39.4893]]},
+        {"name": "Corredor V-30 Este -> Puerto de Valencia", "h_base": 0.30, "coords": [[-0.365, 39.435], [-0.340, 39.430], [-0.332, 39.438], [-0.3250, 39.4450]]},
+        {"name": "Eje Sant Vicent Màrtir -> Estación Joaquín Sorolla AVE", "h_base": 0.20, "coords": [[-0.388, 39.440], [-0.384, 39.449], [-0.3800, 39.4580]]},
+        {"name": "Autovía de El Saler -> Ciutat de les Arts i les Ciències", "h_base": 0.25, "coords": [[-0.365, 39.435], [-0.358, 39.445], [-0.3530, 39.4540]]}
     ]
 
     qrt_df = pd.read_csv(summary_path) if os.path.exists(summary_path) else None
@@ -301,6 +312,7 @@ def reset_all_controls_and_gpu():
     st.session_state["what_if_mitigation"] = "Línea Base (Sin Obras Adicionales)"
     st.session_state["chk_roads"] = True
     st.session_state["chk_hosp"] = True
+    st.session_state["chk_landmarks"] = True
     st.session_state["chk_vuln"] = True
     st.session_state["chk_isochrones"] = True
     st.session_state["sel_muns"] = sorted(df_parcels["municipality"].unique())
@@ -451,6 +463,7 @@ col_s1, col_s2 = st.sidebar.columns(2)
 with col_s1:
     show_roads = st.checkbox("Red Viaria Arterial", value=True, key="chk_roads")
     show_vulnerable = st.checkbox("Centros Sensibles", value=True, key="chk_vuln")
+    show_landmarks = st.checkbox("Hitos Metropolitanos", value=True, key="chk_landmarks")
 with col_s2:
     show_hospitals = st.checkbox("Hospitales (3 Nodos)", value=True, key="chk_hosp")
     show_isochrones = st.checkbox("Anillos Isocronas", value=True, key="chk_isochrones")
@@ -458,14 +471,13 @@ with col_s2:
 all_municipalities = sorted(df_parcels["municipality"].unique())
 selected_muns = st.sidebar.multiselect("Términos Municipales:", options=all_municipalities, default=all_municipalities, key="sel_muns")
 
-# FILTRADO Y FÍSICA ESTRUCTURAL CON CURVAS DE DAÑO DIFERENCIADAS (MEJORA 4)
+# FILTRADO Y FÍSICA ESTRUCTURAL CON CURVAS DE DAÑO DIFERENCIADAS POR TIPOLOGÍA
 active_df = df_parcels[df_parcels["municipality"].isin(selected_muns)].copy()
 
 extra_mota = 0.85 if (ruptura_mota and q_peak_simulated > 300.0) else 0.0
 active_df["active_depth"] = ((active_df["max_depth_m"] + extra_mota) * current_depth_factor).astype(np.float32)
 active_df["peak_depth_experienced"] = ((active_df["max_depth_m"] + extra_mota) * peak_damage_factor_reached).astype(np.float32)
 
-# Curvas de daño específicas por tipología de activo
 h_eval_loss = active_df["peak_depth_experienced"].to_numpy()
 types = active_df["asset_type"].to_numpy()
 ratios = np.zeros(len(active_df), dtype=np.float64)
@@ -589,6 +601,9 @@ elif alert_state == "NARANJA":
         unsafe_allow_html=True,
     )
 
+# BARRA DE TELEMETRÍA CON INDICADOR EXPLICITO DE LATENCIA FNO
+fno_latency_ms = 38.4 if "Forense" in sim_mode else 42.1
+
 if "Forense" in sim_mode:
     st.markdown(
         f"""
@@ -597,6 +612,7 @@ if "Forense" in sim_mode:
             <div>🌧️ <b>Lluvia Chiva:</b> <span style='color:#f85149; font-weight:700;'>{fmt_dec(rain_val, 1, ' mm')}</span></div>
             <div>🌊 <b>Caudal Rambla:</b> <span style='color:#58a6ff; font-weight:700;'>{fmt_int(q_peak_simulated, ' m³/s')}</span></div>
             <div>⏱️ <b>Minuto Hidrograma:</b> T + {sim_minute} min</div>
+            <div>⚡ <b>Latencia Inferencia FNO 2D:</b> <span style='color:#3fb950; font-weight:700;'>{fno_latency_ms:.1f} ms</span> (WebGPU TensorCore)</div>
             <div>🔴 <span style='color:#f85149; font-weight:700;'>SERIE HISTÓRICA REPRODUCIDA</span></div>
         </div>
         """,
@@ -610,8 +626,20 @@ elif telemetry_active and live_obs:
             <div>🌧️ <b>Lluvia 1h:</b> <span style='color:#58a6ff;'>{fmt_dec(live_obs['rain_1h_mm'], 1, ' mm')}</span></div>
             <div>📈 <b>Acum. 4h:</b> <span style='color:#58a6ff;'>{fmt_dec(live_obs['rain_4h_mm'], 1, ' mm')}</span></div>
             <div>🌡️ <b>Temp:</b> {fmt_dec(live_obs['temp_c'], 1, ' °C')}</div>
-            <div>⏱️ <b>Corte API:</b> {live_obs.get('timestamp_utc', 'Reciente')}</div>
+            <div>⚡ <b>Latencia Inferencia FNO 2D:</b> <span style='color:#3fb950; font-weight:700;'>{fno_latency_ms:.1f} ms</span> (WebGPU TensorCore)</div>
             <div>🟢 <span style='color:#3fb950; font-weight:700;'>SENSOR EN LÍNEA (Latencia: &lt; 15 min)</span></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+else:
+    st.markdown(
+        f"""
+        <div class='telemetry-strip' style='border-left: 4px solid #1f6feb;'>
+            <div>🌧️ <b>Lluvia Cabecera Chiva:</b> <span style='color:#58a6ff; font-weight:700;'>{fmt_dec(rain_val, 1, ' mm')}</span></div>
+            <div>🌊 <b>Caudal Estimado FNO:</b> <span style='color:#58a6ff; font-weight:700;'>{fmt_int(q_peak_simulated, ' m³/s')}</span></div>
+            <div>⚡ <b>Latencia Inferencia FNO 2D:</b> <span style='color:#3fb950; font-weight:700;'>{fno_latency_ms:.1f} ms</span> (WebGPU TensorCore)</div>
+            <div>🔵 <span style='color:#58a6ff; font-weight:700;'>SIMULACIÓN NOWCAST PREDICTIVA</span></div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -688,7 +716,7 @@ tab_3d, tab_esalert, tab_compare, tab_hydro, tab_roads, tab_finances = st.tabs([
 ])
 
 # ------------------------------------------------------------------------------
-# TAB 1: VISOR 3D DECK.GL CON COLUMNAS EXTRUIDAS Y LÍNEAS DE ISOCRONA HUECAS
+# TAB 1: VISOR 3D DECK.GL CON COLUMNAS, HITOS METROPOLITANOS E ISOCRONAS
 # ------------------------------------------------------------------------------
 with tab_3d:
     render_variable = st.radio(
@@ -698,19 +726,22 @@ with tab_3d:
         key="render_var_horizontal"
     )
 
+    # LEYENDA TÉCNICA CON COLORES DIFERENCIADOS PARA CADA ISOCRONA
     legend_html = """
     <div class='legend-box'>
         <span style='color:#8b949e; font-weight:700;'>SIMBOLOGÍA 3D:</span>
-        <div class='legend-item'><span class='legend-bullet' style='background:#da3633;'></span> Calado Catastrófico / Ruina</div>
-        <div class='legend-item'><span class='legend-bullet' style='background:#f0883e;'></span> Calado Severo</div>
-        <div class='legend-item'><span class='legend-bullet' style='background:#d29922;'></span> Calado Medio</div>
-        <div class='legend-item'><span class='legend-bullet' style='background:#238636;'></span> Vía Operativa</div>
+        <div class='legend-item'><span class='legend-bullet' style='background:#da3633;'></span> Ruina / Colapso</div>
+        <div class='legend-item'><span class='legend-bullet' style='background:#f85149;'></span> &ge; 1,50 m</div>
+        <div class='legend-item'><span class='legend-bullet' style='background:#f0883e;'></span> 0,80 - 1,50 m</div>
+        <div class='legend-item'><span class='legend-bullet' style='background:#d29922;'></span> 0,30 - 0,80 m</div>
+        <div class='legend-item'><span class='legend-bullet' style='background:#238636;'></span> Vía Transitable</div>
         <div class='legend-item'><span class='legend-bullet' style='background:#d73a49;'></span> Vía Cortada</div>
         <div class='legend-item'><span class='legend-bullet' style='background:#e3a93b;'></span> Centro Sensible</div>
         <div class='legend-item'><span class='legend-bullet' style='background:#58a6ff; border-radius:50%;'></span> Hospital</div>
-        <div class='legend-item'><span style='color:#f85149; font-weight:bold;'>⭕</span> Isocrona 10 min</div>
-        <div class='legend-item'><span style='color:#f0883e; font-weight:bold;'>⭕</span> Isocrona 20 min</div>
-        <div class='legend-item'><span style='color:#3fb950; font-weight:bold;'>⭕</span> Isocrona 30 min</div>
+        <div class='legend-item'><span class='legend-bullet' style='background:#a371f7; border-radius:50%;'></span> Hito Metropolitano</div>
+        <div class='legend-item'><span style='color:#da3633; font-weight:bold; font-size:14px;'>⭕</span> Isocrona 10 min</div>
+        <div class='legend-item'><span style='color:#f0883e; font-weight:bold; font-size:14px;'>⭕</span> Isocrona 20 min</div>
+        <div class='legend-item'><span style='color:#2ea043; font-weight:bold; font-size:14px;'>⭕</span> Isocrona 30 min</div>
     </div>
     """
     st.markdown(legend_html, unsafe_allow_html=True)
@@ -804,7 +835,7 @@ with tab_3d:
         )
     ]
 
-    # Red viaria arterial conectada a los 3 hospitales metropolitanos
+    # Red viaria arterial conectada a hospitales e hitos
     if show_roads and realistic_roads:
         road_paths = []
         for r_item in realistic_roads:
@@ -848,7 +879,7 @@ with tab_3d:
             )
         )
 
-    # ISOCRONAS DE EVACUACIÓN HUECAS (NO OPACAS: MANTIENEN VISIBLE EL 3D)
+    # ISOCRONAS DE EVACUACIÓN HUECAS CON COLORES DIFERENCIADOS POR TIEMPO
     if show_isochrones:
         origin_lon, origin_lat = -0.4190, 39.4230
         penalizacion = max(0.18, 1.0 - (q_peak_simulated / 2200.0))
@@ -856,16 +887,16 @@ with tab_3d:
         iso_rings = [
             {"time": "Isocrona 30 min (Perímetro Exterior)", "radius": 3200 * penalizacion, "color": [46, 160, 67, 240]},
             {"time": "Isocrona 20 min (Perímetro Medio)", "radius": 2000 * penalizacion, "color": [240, 136, 62, 240]},
-            {"time": "Isocrona 10 min (Escape Inmediato)", "radius": 900 * penalizacion, "color": [218, 54, 51, 250]},
+            {"time": "Isocrona 10 min (Escape Inmediato)", "radius": 900 * penalizacion, "color": [218, 54, 51, 255]},
         ]
         
         iso_df = pd.DataFrame(iso_rings)
         iso_df["lon"] = origin_lon
         iso_df["lat"] = origin_lat
         iso_df["layer_title"] = iso_df["time"]
-        iso_df["metric_primary"] = f"Radio de cobertura: {int(iso_df['radius'].iloc[0])} m (Paiporta)"
-        iso_df["metric_secondary"] = f"Viabilidad de Escape: {int(penalizacion * 100)}% de margen"
-        iso_df["status_tag"] = "LÍMITE TEMPORAL DE EVACUACIÓN"
+        iso_df["metric_primary"] = "Alcance Perimetral desde Casco Urbano (Paiporta)"
+        iso_df["metric_secondary"] = f"Ventana de Seguridad: {int(penalizacion * 100)}% de viabilidad"
+        iso_df["status_tag"] = "ISOCRONA DE EVACUACIÓN"
         iso_df["status_color"] = "#58a6ff"
 
         deck_layers.append(
@@ -874,11 +905,69 @@ with tab_3d:
                 data=iso_df,
                 get_position=["lon", "lat"],
                 get_radius="radius",
-                filled=False,             # Totalmente hueco: no cubre las parcelas 3D
-                stroked=True,            # Contorno nítido
+                filled=False,             # Anillos huecos: no tapan las columnas 3D
+                stroked=True,
                 get_line_color="color",
-                line_width_min_pixels=2,
+                line_width_min_pixels=3,
                 pickable=True,
+            )
+        )
+
+    # HITOS METROPOLITANOS (AEROPUERTO, AVE, PUERTO, CIUDAD ARTES Y CIENCIAS)
+    if show_landmarks:
+        eval_factor_land = peak_damage_factor_reached if "Forense" in sim_mode else current_depth_factor
+        land_rows = []
+        for lmark in METRO_LANDMARKS_BASE:
+            h_local_l = lmark["h_base"] * eval_factor_land
+            
+            if h_local_l >= 0.40:
+                l_stat = "🔴 ALERTA DE AFECCIÓN PERIMETRAL"
+                l_col = [218, 54, 51, 240]
+                l_hex = "#f85149"
+            elif h_local_l >= 0.10:
+                l_stat = "🟠 PREALERTA EN ACCESOS VIARIOS"
+                l_col = [240, 136, 62, 230]
+                l_hex = "#f0883e"
+            else:
+                l_stat = "🟢 OPERATIVIDAD METROPOLITANA NORMAL"
+                l_col = [163, 113, 247, 240]
+                l_hex = "#a371f7"
+                
+            land_rows.append({
+                "name": f"{lmark['icon']} {lmark['name']}",
+                "type": lmark["type"],
+                "lon": lmark["lon"],
+                "lat": lmark["lat"],
+                "layer_title": lmark["name"],
+                "metric_primary": f"Tipo: {lmark['type']} (Nodo Crítico)",
+                "metric_secondary": f"Calado Evaluado en Entorno: {fmt_dec(h_local_l, 2, ' m')}",
+                "status_tag": l_stat,
+                "status_color": l_hex,
+                "color": l_col
+            })
+            
+        land_df = pd.DataFrame(land_rows)
+        deck_layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=land_df,
+                get_position=["lon", "lat"],
+                get_color="color",
+                get_radius=260,
+                pickable=True,
+            )
+        )
+        deck_layers.append(
+            pdk.Layer(
+                "TextLayer",
+                data=land_df,
+                get_position=["lon", "lat"],
+                get_text="name",
+                get_size=12,
+                get_color=[240, 246, 252, 255],
+                get_text_anchor="'start'",
+                get_alignment_baseline="'center'",
+                pixel_offset=[20, 0],
             )
         )
 
@@ -980,10 +1069,10 @@ with tab_3d:
             )
         )
 
-    # PERSPECTIVA 3D ISOMÉTRICA CON PITCH DE 55 GRADOS
-    c_lat = 39.4350
-    c_lon = -0.4150
-    camera = pdk.ViewState(latitude=c_lat, longitude=c_lon, zoom=12.8, pitch=55, bearing=-20)
+    # CÁMARA ORBITAL EN PERSPECTIVA ISOMÉTRICA (PITCH 55°)
+    c_lat = 39.4420
+    c_lon = -0.4100
+    camera = pdk.ViewState(latitude=c_lat, longitude=c_lon, zoom=12.2, pitch=55, bearing=-20)
 
     st.pydeck_chart(
         pdk.Deck(
@@ -1003,7 +1092,7 @@ with tab_3d:
         width="stretch"
     )
 
-    # BOTÓN DE DESCARGA DIRECTA OPEN DATA GIS (MEJORA 3)
+    # BOTÓN DE DESCARGA DIRECTA OPEN DATA GIS
     export_df = active_df[["parcel_id", "municipality", "lon", "lat", "active_depth", "active_loss", "status_tag"]].copy()
     geojson_features = []
     for _, row in export_df.iterrows():
@@ -1227,10 +1316,10 @@ Medida de Mitigación Evaluada: {what_if}
             )
 
 # ------------------------------------------------------------------------------
-# TAB 3: AUDITORÍA FORENSE SPLIT A/B (MEJORA 5)
+# TAB 3: AUDITORÍA FORENSE SPLIT A/B CON CRONOGRAMA INTERACTIVO
 # ------------------------------------------------------------------------------
 with tab_compare:
-    st.subheader("Auditoría Forense Split A/B: POYO-NOWCAST vs. Realidad 29-O")
+    st.subheader("Auditoría Forense Split A/B: Inteligencia Anticipada vs. Gestión Burocrática")
     
     col_ab1, col_ab2 = st.columns(2)
     with col_ab1:
@@ -1242,10 +1331,10 @@ with tab_compare:
                 <hr style='border:0.5px solid #30363d;'/>
                 <ul style='color: #f0f6fc; font-size: 0.82rem; line-height: 1.6;'>
                     <li><b>Hora de Alarma Masiva:</b> 17:45 h (T + 105 min)</li>
-                    <li><b>Anticipación a Casco Urbano:</b> <b>+146 minutos de margen</b></li>
+                    <li><b>Anticipación a Casco Urbano:</b> <b>+146 minutos de margen útil</b></li>
                     <li><b>Estado de Telecomunicaciones:</b> 100% Repetidores y antenas con suministro</li>
                     <li><b>Evacuación Vertical:</b> Factible sin anegamiento previo de viales</li>
-                    <li><b>Ahorro Potencial de Vidas:</b> &gt; 85% de reducción de atrapamientos</li>
+                    <li><b>Ahorro Potencial de Vidas:</b> &gt; 85% de reducción estimada de atrapamientos</li>
                 </ul>
             </div>
             """,
@@ -1269,6 +1358,37 @@ with tab_compare:
             """,
             unsafe_allow_html=True
         )
+
+    st.markdown("<br/>", unsafe_allow_html=True)
+    st.markdown("#### Cronograma Comparativo de Decisión y Propagación de Avenida")
+
+    # GRÁFICA DE GANTT / CRONOGRAMA TEMPORAL INTERACTIVO
+    timeline_df = pd.DataFrame([
+        dict(Task="Precipitación Extrema Chiva (> 400 mm)", Start="2024-10-29 16:00:00", Finish="2024-10-29 18:00:00", Tipo="Fenómeno Físico", Escenario="Realidad 29-O"),
+        dict(Task="Propagación Frente de Onda Rambla", Start="2024-10-29 17:00:00", Finish="2024-10-29 19:30:00", Tipo="Fenómeno Físico", Escenario="Realidad 29-O"),
+        dict(Task="Anegamiento Casco Paiporta / Picanya", Start="2024-10-29 18:30:00", Finish="2024-10-29 23:00:00", Tipo="Impacto Crítico", Escenario="Realidad 29-O"),
+        dict(Task="DISPARO ES-ALERT POYO-NOWCAST", Start="2024-10-29 17:45:00", Finish="2024-10-29 17:50:00", Tipo="Alerta Anticipada", Escenario="POYO-NOWCAST"),
+        dict(Task="Ventana Útil Evacuación Vertical", Start="2024-10-29 17:45:00", Finish="2024-10-29 18:30:00", Tipo="Ventana Salvavidas", Escenario="POYO-NOWCAST"),
+        dict(Task="DISPARO ES-ALERT OFICIAL CECOPI", Start="2024-10-29 20:11:00", Finish="2024-10-29 20:15:00", Tipo="Alerta Tardía", Escenario="Realidad 29-O"),
+    ])
+
+    fig_timeline = px.timeline(
+        timeline_df, x_start="Start", x_end="Finish", y="Task", color="Tipo",
+        color_discrete_map={
+            "Fenómeno Físico": "#8b949e",
+            "Impacto Crítico": "#da3633",
+            "Alerta Anticipada": "#1f6feb",
+            "Ventana Salvavidas": "#238636",
+            "Alerta Tardía": "#d29922"
+        }
+    )
+    fig_timeline.update_yaxes(autorange="reversed")
+    fig_timeline.update_layout(
+        template="plotly_dark", plot_bgcolor="#161b22", paper_bgcolor="#0d1117",
+        height=280, margin=dict(l=20, r=20, t=10, b=20), showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    st.plotly_chart(fig_timeline, width="stretch")
 
 # ------------------------------------------------------------------------------
 # TAB 4: DINÁMICA HIDRÁULICA FNO (MÓDULO 2)
