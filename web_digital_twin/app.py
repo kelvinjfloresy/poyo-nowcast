@@ -1,7 +1,7 @@
 """
 POYO-NOWCAST: Módulo 5 - Plataforma C2 de Gemelo Digital, Resiliencia y Solvencia II
 Tecnología: Streamlit + PyDeck (Deck.gl WebGPU) + Plotly C2 HUD + PyProj Geodésico.
-Integración: AEMET OpenData API + FNO 2D + Isocronas CSS + Hitos y Medios Municipales.
+Integración: AEMET OpenData API + FNO 2D + Despacho Trilingüe CAP v1.2 (ES/VAL/EN) + Red Institucional.
 Autor: Kelvin Jesus Flores Yarihuaman (https://www.linkedin.com/in/kelvinflores-ingenieria)
 Licencia: Open Science (CC BY 4.0)
 """
@@ -39,7 +39,7 @@ except Exception:
     HAS_AEMET = False
 
 # ==============================================================================
-# CONFIGURACIÓN DEL ENTORNO Y ESTILOS HUD C2
+# CONFIGURACIÓN DEL ENTORNO Y ESTILOS HUD C2 TÁCTICO
 # ==============================================================================
 st.set_page_config(
     page_title="POYO-NOWCAST | Plataforma C2 Gemelo Digital",
@@ -156,6 +156,33 @@ st.markdown(
         box-shadow: 0 0 14px rgba(46, 160, 67, 0.18);
     }
 
+    /* ESTILIZACIÓN TÁCTICA DEL MODO DE OPERACIÓN */
+    .mode-selector-container {
+        background: rgba(22, 27, 34, 0.95);
+        border: 1.5px solid #388bfd;
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 14px;
+        box-shadow: 0 0 14px rgba(56, 139, 253, 0.20);
+    }
+
+    div[data-testid="stRadio"] > div {
+        gap: 6px;
+    }
+    div[data-testid="stRadio"] label {
+        background: #161b22;
+        border: 1px solid #30363d;
+        padding: 8px 12px;
+        border-radius: 6px;
+        transition: all 0.2s ease;
+        font-weight: 600 !important;
+        font-size: 0.79rem !important;
+    }
+    div[data-testid="stRadio"] label:hover {
+        border-color: #58a6ff;
+        background: rgba(56, 139, 253, 0.12);
+    }
+
     .aemet-scale-table {
         width: 100%; font-size: 0.72rem; border-collapse: collapse; margin-top: 6px;
         font-family: 'JetBrains Mono', monospace;
@@ -210,7 +237,7 @@ class GeoProjector:
 
 PROJECTOR = GeoProjector()
 
-# CENTROS VULNERABLES Y CENTROS DE SALUD LOCALES
+# CENTROS VULNERABLES
 VULNERABLE_CENTERS_BASE = [
     {"name": "Residencia San Francisco de Asís", "mun": "Paiporta", "type": "GERIÁTRICO", "lon": -0.4190, "lat": 39.4255, "beds": 120, "h_base": 2.20},
     {"name": "Centro de Salud Paiporta", "mun": "Paiporta", "type": "SALUD", "lon": -0.4160, "lat": 39.4280, "beds": 0, "h_base": 1.40},
@@ -220,18 +247,23 @@ VULNERABLE_CENTERS_BASE = [
     {"name": "Centro Sanitario Integrado Catarroja", "mun": "Catarroja", "type": "SALUD", "lon": -0.4050, "lat": 39.4040, "beds": 0, "h_base": 1.80},
 ]
 
-# HITOS METROPOLITANOS Y MEDIOS MUNICIPALES DE EMERGENCIA
+# HITOS METROPOLITANOS, UNIVERSIDADES Y SEDES INSTITUCIONALES OFICIALES
 METRO_LANDMARKS_BASE = [
-    {"name": "Aeropuerto de Manises / Valencia (VLC)", "type": "AEROPUERTO", "lon": -0.4816, "lat": 39.4893, "icon": "✈️", "h_base": 0.20},
-    {"name": "Estación Central Alta Velocidad AVE Joaquín Sorolla", "type": "FERROCARRIL", "lon": -0.3800, "lat": 39.4580, "icon": "🚆", "h_base": 0.15},
-    {"name": "Puerto Autónomo de Valencia (Dársena Comercial)", "type": "PUERTO", "lon": -0.3250, "lat": 39.4450, "icon": "🚢", "h_base": 0.10},
+    {"name": "Aeropuerto de Manises / Valencia (VLC)", "type": "AEROPUERTO", "lon": -0.4816, "lat": 39.4893, "icon": "✈️", "h_base": 0.25},
+    {"name": "Estación Central AVE Joaquín Sorolla", "type": "FERROCARRIL", "lon": -0.3800, "lat": 39.4580, "icon": "🚆", "h_base": 0.18},
+    {"name": "Puerto Autónomo de Valencia (Dársena)", "type": "PUERTO", "lon": -0.3250, "lat": 39.4450, "icon": "🚢", "h_base": 0.12},
     {"name": "Ciutat de les Arts i les Ciències", "type": "PATRIMONIO", "lon": -0.3530, "lat": 39.4540, "icon": "🏛️", "h_base": 0.10},
-    {"name": "Parque de Cabecera / Antiguo Cauce Turia", "type": "HIDRÁULICA", "lon": -0.4100, "lat": 39.4750, "icon": "🌳", "h_base": 0.30},
-    # Nuevos medios municipales de rescate e infraestructuras de paso
-    {"name": "Parque Central de Bomberos Valencia (Campanar)", "type": "BOMBEROS", "lon": -0.4010, "lat": 39.4790, "icon": "🚒", "h_base": 0.15},
-    {"name": "Parque Comarcal de Bomberos de Torrent (CPBV)", "type": "BOMBEROS", "lon": -0.4680, "lat": 39.4320, "icon": "🚒", "h_base": 0.25},
-    {"name": "Estación Metrovalencia Paiporta (Cota Cero)", "type": "TRANSPORTE", "lon": -0.4175, "lat": 39.4270, "icon": "🚇", "h_base": 2.40},
+    {"name": "Parque de Cabecera / Jardín del Turia", "type": "HIDRÁULICA", "lon": -0.4100, "lat": 39.4750, "icon": "🌳", "h_base": 0.35},
+    {"name": "Parque Central de Bomberos Valencia", "type": "BOMBEROS", "lon": -0.4010, "lat": 39.4790, "icon": "🚒", "h_base": 0.15},
+    {"name": "Parque Comarcal de Bomberos de Torrent", "type": "BOMBEROS", "lon": -0.4680, "lat": 39.4320, "icon": "🚒", "h_base": 0.25},
+    {"name": "Estación Metrovalencia Paiporta", "type": "TRANSPORTE", "lon": -0.4175, "lat": 39.4270, "icon": "🚇", "h_base": 2.40},
     {"name": "Centro de Coordinación 112 GVA (L'Eliana)", "type": "MANDO_C2", "lon": -0.5280, "lat": 39.5660, "icon": "🏢", "h_base": 0.05},
+    # Organismos Oficiales y Universidades
+    {"name": "Palau de la Generalitat Valenciana (Conselleria Interior)", "type": "GOBIERNO", "lon": -0.3765, "lat": 39.4770, "icon": "🏛️", "h_base": 0.10},
+    {"name": "CHJ - Confederación Hidrográfica del Júcar (SAIH)", "type": "ORGANISMO_CUENCA", "lon": -0.3590, "lat": 39.4785, "icon": "💧", "h_base": 0.15},
+    {"name": "Delegación del Gobierno en la Comunitat Valenciana", "type": "ESTADO", "lon": -0.3710, "lat": 39.4760, "icon": "⚖️", "h_base": 0.10},
+    {"name": "Universitat de València (Campus Tarongers / Blasco Ibáñez)", "type": "UNIVERSIDAD", "lon": -0.3440, "lat": 39.4780, "icon": "🎓", "h_base": 0.12},
+    {"name": "Universitat Politècnica de València (Campus de Vera)", "type": "UNIVERSIDAD", "lon": -0.3420, "lat": 39.4810, "icon": "🏛️", "h_base": 0.10},
 ]
 
 @st.cache_data
@@ -293,7 +325,8 @@ def load_all_system_artifacts():
         {"name": "Autovía A-3 -> Aeropuerto de Manises (VLC)", "h_base": 0.35, "coords": [[-0.4072, 39.4682], [-0.4250, 39.4750], [-0.4420, 39.4830], [-0.4608, 39.4930], [-0.4816, 39.4893]]},
         {"name": "Corredor V-30 Este -> Puerto de Valencia", "h_base": 0.30, "coords": [[-0.365, 39.435], [-0.340, 39.430], [-0.332, 39.438], [-0.3250, 39.4450]]},
         {"name": "Eje Sant Vicent Màrtir -> Estación Joaquín Sorolla AVE", "h_base": 0.20, "coords": [[-0.388, 39.440], [-0.384, 39.449], [-0.3800, 39.4580]]},
-        {"name": "Autovía de El Saler -> Ciutat de les Arts i les Ciències", "h_base": 0.25, "coords": [[-0.365, 39.435], [-0.358, 39.445], [-0.3530, 39.4540]]}
+        {"name": "Autovía de El Saler -> Ciutat de les Arts i les Ciències", "h_base": 0.25, "coords": [[-0.365, 39.435], [-0.358, 39.445], [-0.3530, 39.4540]]},
+        {"name": "Eje Blasco Ibáñez / Tarongers -> UV / UPV / CHJ", "h_base": 0.15, "coords": [[-0.3765, 39.4770], [-0.3590, 39.4785], [-0.3440, 39.4780], [-0.3420, 39.4810]]}
     ]
 
     qrt_df = pd.read_csv(summary_path) if os.path.exists(summary_path) else None
@@ -303,7 +336,7 @@ def load_all_system_artifacts():
 df_parcels, realistic_roads, qrt_summary = load_all_system_artifacts()
 
 # ==============================================================================
-# BARRA LATERAL: BOTÓN DESTACADO AEMET EN PRIMERA POSICIÓN
+# BARRA LATERAL: BOTÓN AEMET DESTACADO Y SELECTOR TÁCTICO DE OPERACIÓN
 # ==============================================================================
 st.sidebar.markdown(
     """
@@ -315,7 +348,7 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
-# 1. BOTÓN DESTACADO AEMET OPENDATA EN PRIMERA POSICIÓN
+# 1. BOTÓN DESTACADO AEMET EN PRIMERA POSICIÓN
 st.sidebar.markdown(
     """
     <div class='aemet-featured-card'>
@@ -329,6 +362,27 @@ st.sidebar.markdown(
     unsafe_allow_html=True
 )
 conectar_aemet = st.sidebar.toggle("🟢 Habilitar Telemetría AEMET en Directo", value=True, key="aemet_toggle")
+
+# 2. SELECTOR TÁCTICO DE MODO DE OPERACIÓN DESTACADO
+st.sidebar.markdown(
+    """
+    <div class='mode-selector-container'>
+        <b style='color:#58a6ff; font-size:0.82rem;'>🎛️ MODO DE OPERACIÓN ACTIVO</b><br/>
+        <span style='color:#8b949e; font-size:0.72rem;'>Conmutación Forense 2024 vs. Nowcast 2026+</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+sim_mode = st.sidebar.radio(
+    "Seleccionar Modo:",
+    [
+        "🔴 Modo Hindcast (Forense DANA Valencia 29-O 2024)",
+        "⚡ Modo Nowcast Predictivo (Tiempo Real)"
+    ],
+    key="sim_mode_selector",
+    label_visibility="collapsed"
+)
 
 st.sidebar.markdown("<hr style='border:0.5px solid #21262d; margin:8px 0;'/>", unsafe_allow_html=True)
 
@@ -347,10 +401,10 @@ def reset_all_controls_and_gpu():
     st.session_state["chk_vuln"] = True
     st.session_state["chk_isochrones"] = True
     st.session_state["sel_muns"] = sorted(df_parcels["municipality"].unique())
-    st.session_state["map_lat"] = 39.4420
-    st.session_state["map_lon"] = -0.4100
-    st.session_state["map_zoom"] = 12.2
-    st.session_state["map_pitch"] = 55
+    st.session_state["map_lat"] = 39.4320
+    st.session_state["map_lon"] = -0.4150
+    st.session_state["map_zoom"] = 12.6
+    st.session_state["map_pitch"] = 52
 
 if st.sidebar.button("🔄 Restablecer Parámetros (Reset Total)", use_container_width=True):
     reset_all_controls_and_gpu()
@@ -365,18 +419,11 @@ with p_col1:
         st.rerun()
 with p_col2:
     if st.button("⚠️ Alerta (190 mm)", use_container_width=True):
-        st.session_state["sim_mode_selector"] = "Modo Nowcast Predictivo (Tiempo Real)"
+        st.session_state["sim_mode_selector"] = "⚡ Modo Nowcast Predictivo (Tiempo Real)"
         st.session_state["rain_slider"] = 190.0
         st.rerun()
 
-sim_mode = st.sidebar.radio(
-    "Modo de Operación:",
-    ["🔴 Modo Hindcast (Forense DANA Valencia 29-O 2024)", "Modo Nowcast Predictivo (Tiempo Real)"],
-    key="sim_mode_selector"
-)
-
 st.sidebar.markdown("<hr style='border:0.5px solid #21262d; margin:8px 0;'/>", unsafe_allow_html=True)
-
 st.sidebar.markdown("<b style='color:#c9d1d9; font-size:0.80rem;'>🛡️ Obras de Defensa / Mitigación (What-If)</b>", unsafe_allow_html=True)
 what_if = st.sidebar.selectbox(
     "Simular Medida de Mitigación:",
@@ -496,7 +543,7 @@ col_s1, col_s2 = st.sidebar.columns(2)
 with col_s1:
     show_roads = st.checkbox("Red Viaria Arterial", value=True, key="chk_roads")
     show_vulnerable = st.checkbox("Centros Sensibles", value=True, key="chk_vuln")
-    show_landmarks = st.checkbox("Hitos / Medios Mun.", value=True, key="chk_landmarks")
+    show_landmarks = st.checkbox("Hitos / Organismos / Univ.", value=True, key="chk_landmarks")
 with col_s2:
     show_hospitals = st.checkbox("Hospitales", value=True, key="chk_hosp")
     show_isochrones = st.checkbox("Anillos Isocronas", value=True, key="chk_isochrones")
@@ -735,7 +782,6 @@ with kpi5:
 
 st.markdown("<br/>", unsafe_allow_html=True)
 
-# GESTIÓN DE COORDENADAS DE CÁMARA (BOTONES DE ENCUADRE RÁPIDO)
 if "map_lat" not in st.session_state:
     st.session_state["map_lat"] = 39.4320
 if "map_lon" not in st.session_state:
@@ -758,7 +804,7 @@ tab_3d, tab_esalert, tab_compare, tab_hydro, tab_roads, tab_finances = st.tabs([
 ])
 
 # ------------------------------------------------------------------------------
-# TAB 1: VISOR 3D CON ENCUADRE RÁPIDO E ISOCRONAS CSS CORREGIDAS
+# TAB 1: VISOR 3D CON ENLACE INSTITUCIONAL, UNIVERSIDADES Y REENCUADRE
 # ------------------------------------------------------------------------------
 with tab_3d:
     col_ctrl_left, col_ctrl_right = st.columns([1.8, 2.2])
@@ -780,10 +826,10 @@ with tab_3d:
                 st.session_state["map_pitch"] = 55
                 st.rerun()
         with cam_c2:
-            if st.button("🏙️ Área Metropolitana", use_container_width=True):
-                st.session_state["map_lat"] = 39.4480
-                st.session_state["map_lon"] = -0.3950
-                st.session_state["map_zoom"] = 12.0
+            if st.button("🏛️ Sedes / Universidades", use_container_width=True):
+                st.session_state["map_lat"] = 39.4770
+                st.session_state["map_lon"] = -0.3550
+                st.session_state["map_zoom"] = 13.2
                 st.session_state["map_pitch"] = 48
                 st.rerun()
         with cam_c3:
@@ -794,7 +840,6 @@ with tab_3d:
                 st.session_state["map_pitch"] = 50
                 st.rerun()
 
-    # LEYENDA TÉCNICA CON ANILLOS CSS PUROS (CORRECCIÓN CROMÁTICA DE ISOCRONAS)
     legend_html = """
     <div class='legend-box'>
         <span style='color:#8b949e; font-weight:700;'>SIMBOLOGÍA 3D:</span>
@@ -806,7 +851,7 @@ with tab_3d:
         <div class='legend-item'><span class='legend-bullet' style='background:#d73a49;'></span> Vía Cortada</div>
         <div class='legend-item'><span class='legend-bullet' style='background:#e3a93b;'></span> Centro Sensible</div>
         <div class='legend-item'><span class='legend-bullet' style='background:#58a6ff; border-radius:50%;'></span> Hospital</div>
-        <div class='legend-item'><span class='legend-bullet' style='background:#a371f7; border-radius:50%;'></span> Hito / Medio Municipal</div>
+        <div class='legend-item'><span class='legend-bullet' style='background:#a371f7; border-radius:50%;'></span> Sede / Universidad</div>
         <div class='legend-item'><span class='legend-circle-outline' style='border: 2.5px solid #da3633;'></span> 10 min (Inmediato)</div>
         <div class='legend-item'><span class='legend-circle-outline' style='border: 2.5px solid #f0883e;'></span> 20 min (Medio)</div>
         <div class='legend-item'><span class='legend-circle-outline' style='border: 2.5px solid #2ea043;'></span> 30 min (Exterior)</div>
@@ -981,23 +1026,38 @@ with tab_3d:
             )
         )
 
-    # HITOS METROPOLITANOS Y MEDIOS MUNICIPALES CON ESTADO EN DANA
+    # HITOS METROPOLITANOS, UNIVERSIDADES Y ORGANISMOS OFICIALES
     if show_landmarks:
         eval_factor_land = peak_damage_factor_reached if "Forense" in sim_mode else current_depth_factor
         land_rows = []
         for lmark in METRO_LANDMARKS_BASE:
             h_local_l = lmark["h_base"] * eval_factor_land
             
-            if h_local_l >= 0.40 or (lmark["type"] == "TRANSPORTE" and eval_factor_land >= 0.50):
-                l_stat = "🔴 ALERTA DE INUNDACIÓN / BLOQUEO TOTAL"
+            # Evaluación contextual según tipología de nodo
+            if has_experienced_catastrophe or eval_factor_land >= 0.70:
+                if lmark["type"] == "UNIVERSIDAD":
+                    l_stat = "🔴 SUSPENSIÓN TOTAL DOCENCIA / EVACUACIÓN"
+                elif lmark["type"] == "AEROPUERTO":
+                    l_stat = "🔴 CANCELACIÓN VUELOS / PISTAS INOPERATIVAS"
+                elif lmark["type"] == "FERROCARRIL":
+                    l_stat = "🔴 ALTA VELOCIDAD CORTADA / ESTACIÓN CERRADA"
+                elif lmark["type"] == "GOBIERNO":
+                    l_stat = "🔴 COMITÉ DE CRISIS EN REUNIÓN PERMANENTE (PEI)"
+                elif lmark["type"] == "ORGANISMO_CUENCA":
+                    l_stat = "🔴 GESTIÓN DE AVENIDA EN ALERTA MÁXIMA (CHJ)"
+                else:
+                    l_stat = "🔴 ALERTA DE INUNDACIÓN / BLOQUEO TOTAL"
                 l_col = [218, 54, 51, 240]
                 l_hex = "#f85149"
-            elif h_local_l >= 0.10 or eval_factor_land >= 0.35:
-                l_stat = "🟠 PREALERTA EN ACCESOS / AFECTACIÓN"
+            elif eval_factor_land >= 0.35:
+                if lmark["type"] == "UNIVERSIDAD":
+                    l_stat = "🟠 PREALERTA / CLASES SUSPENDIDAS EN TARDE"
+                else:
+                    l_stat = "🟠 PREALERTA EN ACCESOS / RESTRICCIÓN TRÁFICO"
                 l_col = [240, 136, 62, 230]
                 l_hex = "#f0883e"
             else:
-                l_stat = "🟢 OPERATIVIDAD MUNICIPAL NOMINAL"
+                l_stat = "🟢 OPERATIVIDAD INSTITUCIONAL NOMINAL"
                 l_col = [163, 113, 247, 240]
                 l_hex = "#a371f7"
                 
@@ -1007,7 +1067,7 @@ with tab_3d:
                 "lon": lmark["lon"],
                 "lat": lmark["lat"],
                 "layer_title": lmark["name"],
-                "metric_primary": f"Tipo: {lmark['type']} (Medio Crítico)",
+                "metric_primary": f"Tipología: {lmark['type']} (Sede Clave)",
                 "metric_secondary": f"Calado Estimado en Entorno: {fmt_dec(h_local_l, 2, ' m')}",
                 "status_tag": l_stat,
                 "status_color": l_hex,
@@ -1081,7 +1141,7 @@ with tab_3d:
             )
         )
 
-    # Hospitales terciarios metropolitanos
+    # Hospitales terciarios
     if show_hospitals:
         hosp_data = []
         for h in [
@@ -1188,10 +1248,10 @@ with tab_3d:
     )
 
 # ------------------------------------------------------------------------------
-# TAB 2: DESPACHO ES-ALERT, RRSS & COMUNICADOS MODULADOS
+# TAB 2: DESPACHO ES-ALERT TRILINGÜE (ESPAÑOL / VALENCIÀ / ENGLISH)
 # ------------------------------------------------------------------------------
 with tab_esalert:
-    st.subheader("Centro de Despacho ES-Alert & Resiliencia de Servicios Vitales")
+    st.subheader("Centro de Despacho ES-Alert Trilingüe & Resiliencia de Servicios Vitales")
     
     critical_nodes = [
         {"name": "Subestación Paiporta-Benetússer (Iberdrola)", "type": "ELÉCTRICA", "h_base": 2.10},
@@ -1223,7 +1283,7 @@ with tab_esalert:
             "Impacto Territorial": impact_txt
         })
 
-    col_es1, col_es2 = st.columns([1.5, 1.5])
+    col_es1, col_es2 = st.columns([1.4, 1.6])
 
     with col_es1:
         st.markdown("#### Estado de Nodos Vitales (Lifeline Utilities)")
@@ -1256,7 +1316,7 @@ with tab_esalert:
                 f"Nivel: EMERGENCIA SIT. 2 | Hora: {clock_badge_text}\n"
                 f"Caudal previsto: {fmt_int(q_peak_simulated, ' m3/s')}. Desbordamiento masivo inminente.\n"
                 f"Evacuación vertical INMEDIATA en Paiporta, Picanya, Sedaví y Catarroja. Suba a pisos altos. NO circule.\n"
-                f"Info oficial: @GVA112 #DANAValencia"
+                f"Universidades y transporte suspendidos. Info: @GVA112 #DANAValencia"
             )
         elif alert_state == "NARANJA":
             tweet_text = (
@@ -1285,34 +1345,38 @@ with tab_esalert:
         st.text_area("Texto oficial listo para difusión institucional:", value=tweet_text, height=115)
 
     with col_es2:
-        st.markdown("#### Consola de Transmisión ES-Alert (Cell Broadcast)")
+        st.markdown("#### Consola de Transmisión ES-Alert Trilingüe (Cell Broadcast)")
         
         if alert_state == "ROJO":
             urgency, severity = "Immediate", "Extreme"
             headline = "ALERTA ROJA PROTECCIÓN CIVIL: EMERGENCIA SITUACIÓN 2"
             body_es = f"EMERGENCIA SITUACIÓN 2. Peligro extremo por inundación en cuenca del Poyo. NO CIRCULE. Suba a pisos altos. Aléjese de cauces, pasos subterráneos y barrancos."
             body_val = f"EMERGÈNCIA SITUACIÓ 2. Perill extrem per inundació a la conca del Poio. NO CIRCULEU. Pugeu a pisos alts. Allunyeu-vos de lleres, passos subterranis i barrancs."
+            body_en = f"EMERGENCY LEVEL 2. Extreme flash flood danger in Poyo ravine basin. DO NOT DRIVE. Move immediately to upper floors. Stay away from riverbeds and underpasses."
             cap_status, status_color = "Actual", "#da3633"
-            banner_note = "DIFUSIÓN CELULAR FORZADA (ACTIVACIÓN ACÚSTICA EN SMARTPHONES)"
+            banner_note = "DIFUSIÓN CELULAR FORZADA // ACTIVACIÓN ACÚSTICA MULTILINGÜE"
         elif alert_state == "NARANJA":
             urgency, severity = "Expected", "Severe"
             headline = "ALERTA NARANJA PROTECCIÓN CIVIL: EMERGENCIA SITUACIÓN 1"
             body_es = f"EMERGENCIA SITUACIÓN 1. Crecida severa en cuenca del Poyo ({fmt_int(q_peak_simulated, ' m3/s')}). Evite vados, ramblas y retire vehículos de cotas bajas."
             body_val = f"EMERGÈNCIA SITUACIÓ 1. Crecuda severa a la conca del Poio ({fmt_int(q_peak_simulated, ' m3/s')}). Eviteu guals, rambles i retireu vehicles de cotes baixes."
+            body_en = f"EMERGENCY LEVEL 1. Severe water surge in Poyo ravine ({fmt_int(q_peak_simulated, ' m3/s')}). Avoid ford crossings and move vehicles to higher ground."
             cap_status, status_color = "Actual", "#f0883e"
-            banner_note = "DIFUSIÓN REGIONAL SELECTIVA (AVISO OPERATIVO A POBLACIÓN EXPUESTA)"
+            banner_note = "DIFUSIÓN REGIONAL SELECTIVA // AVISO OPERATIVO TRILINGÜE"
         elif alert_state == "AMARILLO":
             urgency, severity = "Future", "Moderate"
             headline = "PREEMERGENCIA FASE ALERTA: PRECAUCIÓN POR LLUVIAS EN CABECERA"
             body_es = f"Precipitación intensa registrada ({fmt_dec(rain_mm, 1, ' mm')}). Caudal en cauce bajo seguimiento ({fmt_int(q_peak_simulated, ' m3/s')}). Precaución ordinaria."
             body_val = f"Precipitació intensa registrada ({fmt_dec(rain_mm, 1, ' mm')}). Cabal en curs sota seguiment ({fmt_int(q_peak_simulated, ' m3/s')}). Precaució ordinària."
+            body_en = f"Heavy rainfall recorded in headwaters ({fmt_dec(rain_mm, 1, ' mm')}). River discharge monitored ({fmt_int(q_peak_simulated, ' m3/s')}). Exercise caution."
             cap_status, status_color = "Test", "#d29922"
-            banner_note = "CANAL INFORMATIVO CIUDADANO (SIN PITIDO DE ALARMA CELULAR)"
+            banner_note = "CANAL INFORMATIVO CIUDADANO // SIN PITIDO CELULAR"
         else:
             urgency, severity = "Past", "Minor"
             headline = "SITUACIÓN NORMAL // SIN AVISOS ACTIVOS"
             body_es = "Caudales en niveles de estiaje y cuenca en parámetros de seguridad ordinaria."
             body_val = "Cabals en nivells d'estiatge i conca en paràmetres de seguretat ordinària."
+            body_en = "River basin discharge at baseline levels. Normal hydrological safety conditions."
             cap_status, status_color = "Exercise", "#238636"
             banner_note = "CANAL DE DIFUSIÓN EN ESPERA"
 
@@ -1324,11 +1388,14 @@ with tab_esalert:
                     <span style='font-size:0.72rem; color:#8b949e;'>{banner_note}</span>
                 </div>
                 <h4 style='margin: 8px 0; color: #f0f6fc; font-size:1.02rem;'>{headline}</h4>
-                <div style='background: #161b22; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 0.82rem; color: #e6edf3; margin-bottom: 8px;'>
-                    <b>[ES]</b> {body_es}
+                <div style='background: #161b22; padding: 8px 10px; border-radius: 6px; font-family: monospace; font-size: 0.80rem; color: #e6edf3; margin-bottom: 6px;'>
+                    <b style='color:#58a6ff;'>[ES]</b> {body_es}
                 </div>
-                <div style='background: #161b22; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 0.82rem; color: #e6edf3;'>
-                    <b>[VAL]</b> {body_val}
+                <div style='background: #161b22; padding: 8px 10px; border-radius: 6px; font-family: monospace; font-size: 0.80rem; color: #e6edf3; margin-bottom: 6px;'>
+                    <b style='color:#f0883e;'>[VAL]</b> {body_val}
+                </div>
+                <div style='background: #161b22; padding: 8px 10px; border-radius: 6px; font-family: monospace; font-size: 0.80rem; color: #e6edf3;'>
+                    <b style='color:#3fb950;'>[EN]</b> {body_en}
                 </div>
             </div>
             """,
@@ -1344,6 +1411,7 @@ with tab_esalert:
   <msgType>Alert</msgType>
   <scope>Public</scope>
   <info>
+    <language>es-ES</language>
     <category>Met</category>
     <event>Flash Flood / Desbordamiento</event>
     <urgency>{urgency}</urgency>
@@ -1356,14 +1424,42 @@ with tab_esalert:
       <circle>39.4230,-0.4180,8000</circle>
     </area>
   </info>
+  <info>
+    <language>ca-ES</language>
+    <category>Met</category>
+    <event>Inundacio Sobtada / Desbordament</event>
+    <urgency>{urgency}</urgency>
+    <severity>{severity}</severity>
+    <certainty>Observed</certainty>
+    <headline>{headline}</headline>
+    <description>{body_val}</description>
+    <area>
+      <areaDesc>Horta Sud</areaDesc>
+      <circle>39.4230,-0.4180,8000</circle>
+    </area>
+  </info>
+  <info>
+    <language>en-GB</language>
+    <category>Met</category>
+    <event>Flash Flood / River Overflow</event>
+    <urgency>{urgency}</urgency>
+    <severity>{severity}</severity>
+    <certainty>Observed</certainty>
+    <headline>RED FLOOD WARNING - CIVIL PROTECTION</headline>
+    <description>{body_en}</description>
+    <area>
+      <areaDesc>Horta Sud Metropolitan Area</areaDesc>
+      <circle>39.4230,-0.4180,8000</circle>
+    </area>
+  </info>
 </alert>"""
 
         btn_c1, btn_c2 = st.columns(2)
         with btn_c1:
             st.download_button(
-                label="📲 Exportar Payload CAP v1.2 (XML)",
+                label="📲 Exportar Payload CAP v1.2 Trilingüe (XML)",
                 data=cap_xml_payload,
-                file_name="es_alert_poyo_nowcast_payload.xml",
+                file_name="es_alert_poyo_trilingual_cap.xml",
                 mime="application/xml",
                 width="stretch"
             )
@@ -1386,12 +1482,11 @@ Medida de Mitigación Evaluada: {what_if}
             )
 
 # ------------------------------------------------------------------------------
-# TAB 3: AUDITORÍA FORENSE SPLIT A/B EXPANDIDA (MATRIZ Y GANTT)
+# TAB 3: AUDITORÍA FORENSE SPLIT A/B CON SCORECARD Y CRONOGRAMA INTERACTIVO
 # ------------------------------------------------------------------------------
 with tab_compare:
     st.subheader("Auditoría Forense Split A/B: Inteligencia Anticipada vs. Gestión Burocrática")
     
-    # 1. SCORECARD COMPARATIVO NUMÉRICO DIRECTO
     sc1, sc2, sc3, sc4 = st.columns(4)
     with sc1:
         st.metric("Margen de Preaviso", "+146 min", delta="Nowcast (17:45 h) vs 20:11 h", delta_color="normal")
