@@ -223,9 +223,13 @@ def load_production_fno(basin_name):
     x_c = np.linspace(GRID_BOUNDS[0], GRID_BOUNDS[2], W, dtype=np.float32)
     mesh_y, mesh_x = np.meshgrid(y_c, x_c, indexing="ij")
     
-    if basin_name == "Río Magro": slope = 0.15; y_offset = 4369000.0
-    elif basin_name == "Barranco del Carraixet": slope = -0.45; y_offset = 4366000.0
-    else: slope = 0.38; y_offset = 4368000.0
+    # Orientación física real: desagüe hacia l'Albufera (Sureste)
+    if basin_name == "Río Magro": 
+        slope = -0.25; y_offset = 4366000.0
+    elif basin_name == "Barranco del Carraixet": 
+        slope = -0.45; y_offset = 4372000.0
+    else: 
+        slope = -0.65; y_offset = 4367000.0  # Rambla del Poyo real hacia l'Albufera
 
     thalweg_y = y_offset + slope * (mesh_x - 722000.0)
     dist_thalweg = np.abs(mesh_y - thalweg_y).astype(np.float32)
@@ -548,6 +552,11 @@ golas_infra = np.where(is_golas_infra & sim_golas, 0.60, 0.0)
 all_infra_h = np.where(is_represa_infra & sim_turia, all_infra_h * 1.35 + 0.40 * (all_infra_h > 0.1), all_infra_h)
 all_infra_h = np.clip(all_infra_h + pluvial_infra + surge_infra + turia_infra + golas_infra, 0.0, 6.0)
 
+# Blindaje físico Plan Sur / V-30 para toda la infraestructura urbana en UTM Huso 30N
+is_valencia_norte = y_pts > (4371200.0 - 0.42 * (x_pts - 719000.0))
+if not sim_turia:
+    all_infra_h[is_valencia_norte] = 0.0
+
 idx_ptr = 0
 v_depths = all_infra_h[idx_ptr : idx_ptr + len(VULNERABLE_CENTERS_BASE)]; idx_ptr += len(VULNERABLE_CENTERS_BASE)
 t_depths = all_infra_h[idx_ptr : idx_ptr + len(TRANSPORT_LANDMARKS_BASE)]; idx_ptr += len(TRANSPORT_LANDMARKS_BASE)
@@ -582,8 +591,8 @@ if not active_df.empty:
     h_act_rep = np.where(mask_represa, raw_h_act[indices_sel] * 1.35 + 0.40 * (raw_h_act[indices_sel] > 0.1), raw_h_act[indices_sel])
     h_pk_rep  = np.where(mask_represa, raw_h_pk[indices_sel] * 1.35 + 0.40 * (raw_h_pk[indices_sel] > 0.1), raw_h_pk[indices_sel])
 
-    # El Muro Físico de la V-30 (Protege la capital)
-    mask_val_norte = (y_c > 4371000.0) & (x_c > 724000.0)
+    # Muro físico real del Nuevo Cauce del Río Turia (Plan Sur) en UTM Huso 30N
+    mask_val_norte = y_c > (4371200.0 - 0.42 * (x_c - 719000.0))
     if not sim_turia:
         h_act_rep[mask_val_norte] = 0.0
         h_pk_rep[mask_val_norte] = 0.0
@@ -613,142 +622,6 @@ if not active_df.empty:
     active_df["P2_flag"] = (~active_df["P1_flag"]) & is_flooded & (active_df["active_depth"] >= 0.70)
     active_df["P3_flag"] = (~active_df["P1_flag"]) & (~active_df["P2_flag"]) & is_flooded & (active_df["active_depth"] >= 0.30)
     active_df["P4_flag"] = (~active_df["P1_flag"]) & (~active_df["P2_flag"]) & (~active_df["P3_flag"]) & is_flooded
-
-rain_mm = float(rain_val)
-has_experienced_catastrophe = ("Forense" in sim_mode and peak_q_so_far >= 1200.0) or (rain_mm >= 180.0) or (q_peak_simulated >= 1200.0) or sim_pluvial_vlc or sim_storm_surge or sim_turia
-
-if has_experienced_catastrophe:
-    badge_txt = "🔴 SIT. 2: DESBORDAMIENTO METROPOLITANO SEVERO" if q_peak_simulated >= 1200.0 or sim_turia else "🔴 SIT. 2: ALERTA ROJA PREVENTIVA"
-    alert_badge_html = f"<span class='badge-alert-red'>{badge_txt}</span>"
-    alert_state = "ROJO"
-elif rain_mm >= 90.0 or q_peak_simulated >= 600.0:
-    alert_badge_html = "<span class='badge-alert-orange'>🟠 SIT. 1: CRECIDA SEVERA EN CAUCE</span>"
-    alert_state = "NARANJA"
-elif rain_mm >= 40.0 or q_peak_simulated >= 250.0:
-    alert_badge_html = "<span class='badge-alert-yellow'>🟡 PREALERTA POR LLUVIAS</span>"
-    alert_state = "AMARILLO"
-else:
-    alert_badge_html = "<span class='badge-alert-green'>🟢 NORMALIDAD HIDROLÓGICA</span>"
-    alert_state = "VERDE"
-
-st.markdown(
-    f"""
-    <div class='hud-header'>
-        <div style='display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 8px;'>
-            <div style='flex: 1; min-width: 280px;'>
-                <h1 style='margin:0; font-size: 1.45rem; letter-spacing: -0.02em;'>POYO-NOWCAST C2</h1>
-                <span style='color: #8b949e; font-size: 0.75rem;'>ÁREA METROPOLITANA DE VALÈNCIA | FÍSICA FNO 2D Y TRANSFERENCIA DE RIESGO SOLVENCIA II</span>
-            </div>
-            <div style='display: flex; gap: 8px; align-items: center;'>
-                {alert_badge_html}
-                <div class='badge-clock-box'>{clock_badge_text}</div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True,
-)
-
-max_local_depth = float(np.max(active_df["active_depth"])) if not active_df.empty else 0.0
-
-if alert_state == "ROJO":
-    escape_msg = "VENTANA DE ESCAPE: AGOTADA<br/><span style='color:#c9d1d9; font-weight:normal;'>Permanezca en pisos altos</span>" if (max_local_depth >= 0.80 or q_peak_simulated >= 1400.0) else "VENTANA DE SEGURIDAD: &lt; 35 MIN<br/><span style='color:#ffe3a8; font-weight:normal;'>Evacuación vertical preventiva</span>"
-    st.markdown(
-        f"""
-        <div class='evac-banner-red'>
-            <div style='display:flex; align-items:center; gap:16px;'>
-                <span style='font-size:2.2rem;'>🚨</span>
-                <div>
-                    <div class='evac-banner-red-title'>ORDEN GENERAL DE EVACUACIÓN VERTICAL — PROTECCIÓN CIVIL / CECOPI</div>
-                    <div class='evac-banner-red-sub'>PELIGRO EXTREMO POR DESBORDAMIENTO. Suba de inmediato a plantas altas. Prohibido circular por carretera o acceder a garajes/vados.</div>
-                </div>
-            </div>
-            <div style='text-align:right; font-family: monospace; font-size:0.80rem; color:#ff7b72; font-weight:800;'>{escape_msg}</div>
-        </div>
-        """, unsafe_allow_html=True,
-    )
-elif alert_state == "NARANJA":
-    st.markdown(
-        """
-        <div class='evac-banner-orange'>
-            <div style='display:flex; align-items:center; gap:16px;'>
-                <span style='font-size:2.2rem;'>⚠️</span>
-                <div>
-                    <div style='color:#ff9100; font-size:1.10rem; font-weight:800;'>PRE-ALERTA DE EVACUACIÓN: EVITE DESPLAZAMIENTOS Y RETIRE VEHÍCULOS</div>
-                    <div style='color:#f0f6fc; font-size:0.88rem; font-weight:500;'>Onda de avenida aproximándose a l'Horta Sud o afección pluvial/marítima. Asegure puntos altos.</div>
-                </div>
-            </div>
-            <div style='text-align:right; font-family: monospace; font-size:0.80rem; color:#ff9100; font-weight:800;'>
-                VENTANA DE SEGURIDAD:<br/><span style='color:#ffe3a8; font-weight:normal;'>&lt; 45 MINUTOS</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True,
-    )
-
-ckpt_status_tag = "SURROGATE .PT CARGADO" if IS_REAL_CKPT else "RESPALDO CINEMÁTICO ACTIVO"
-telemetry_txt = "SERIE FORENSE 29-O: Chiva / SAIH" if "Forense" in sim_mode else ("TELEMETRÍA AEMET: " + live_obs['station_name'] if (telemetry_active and live_obs) else "NOWCAST PREDICTIVO")
-
-st.markdown(
-    f"""
-    <div class='telemetry-strip' style='border-left: 4px solid {"#ff1744" if "Forense" in sim_mode else "#1f6feb"};'>
-        <div>📡 <b>{telemetry_txt}</b></div>
-        <div>📅 <b>Sensor:</b> <span style='color:#58a6ff; font-weight:700;'>{sensor_date_label}</span></div>
-        <div>🌧️ <b>Lluvia Cabecera:</b> <span style='color:#ff1744; font-weight:700;'>{fmt_dec(rain_val, 1, ' mm')}</span></div>
-        <div>🌊 <b>Caudal Rambla:</b> <span style='color:#58a6ff; font-weight:700;'>{fmt_int(q_peak_simulated, ' m³/s')}</span></div>
-        <div>⚡ <b>Inferencia 2D ({hw_device_name}):</b> <span style='color:#00e676; font-weight:700;'>{fno_latency_ms:.2f} ms</span></div>
-        <div>🔵 <span style='color:{"#00e676" if IS_REAL_CKPT else "#ff1744"}; font-weight:700;'>{ckpt_status_tag}</span></div>
-    </div>
-    """, unsafe_allow_html=True,
-)
-
-total_exposure_m = active_df["asset_value_eur"].sum() / 1e6 if not active_df.empty else 0.0
-current_loss_m = active_df["active_loss"].sum() / 1e6 if not active_df.empty else 0.0
-total_collapsed = int(active_df["dynamic_collapse"].sum()) if not active_df.empty else 0
-
-p1_pop = int(active_df.loc[active_df["P1_flag"], "pop_density"].sum()) if not active_df.empty else 0
-p2_pop = int(active_df.loc[active_df["P2_flag"], "pop_density"].sum()) if not active_df.empty else 0
-p3_pop = int(active_df.loc[active_df["P3_flag"], "pop_density"].sum()) if not active_df.empty else 0
-p4_pop = int(active_df.loc[active_df["P4_flag"], "pop_density"].sum()) if not active_df.empty else 0
-
-if current_loss_m == 0.0 and total_collapsed == 0 and not has_experienced_catastrophe:
-    st.info("ℹ️ **RÉGIMEN SECO:** El área metropolitana analizada se encuentra sin afección hidráulica activa. Monitoreo pasivo en curso.")
-
-q_att, q_exh = 1000.0 if "Ampliación" not in what_if else 1300.0, 1800.0 if "Ampliación" not in what_if else 2340.0
-ins_att, ins_exh = 0.02, 0.08
-q_eval_cat = peak_q_so_far if "Forense" in sim_mode else q_peak_simulated
-collapse_ratio = total_collapsed / max(1, len(active_df)) if len(active_df) > 0 else 0
-
-fq = min(1.0, max(0.0, (q_eval_cat - q_att) / (q_exh - q_att)))
-fi = min(1.0, max(0.0, (collapse_ratio - ins_att) / (ins_exh - ins_att)))
-
-if fq > 0 and fi > 0: payout_rate = min(100.0, np.sqrt(fq * fi) * 100.0)
-elif (sim_pluvial_vlc or sim_storm_surge or sim_turia) and fi > 0: payout_rate = min(100.0, fi * 85.0)
-else: payout_rate = 0.0
-
-total_payout_m = 80.0 * (payout_rate / 100.0)
-
-kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
-with kpi1: st.metric("Caudal Punta Estimado", fmt_int(q_peak_simulated, " m³/s"), delta=f"Mitigado: {fmt_int(q_natural - q_peak_simulated, ' m³/s')} retenidos" if q_mitig_factor < 1.0 else f"{'+' if q_peak_simulated - 1200 >= 0 else ''}{fmt_int(q_peak_simulated - 1200, ' m³/s')} vs Umbral Alerta", delta_color="normal" if q_mitig_factor < 1.0 else "inverse")
-with kpi2: st.metric("Pérdida Directa Activa", fmt_dec(current_loss_m, 1, " M€"), delta=f"{fmt_dec((current_loss_m / max(0.1, total_exposure_m))*100, 1, '%')} de Exposición", delta_color="inverse" if current_loss_m > 0 else "off")
-with kpi3: st.metric("Inmuebles en Ruina", fmt_int(total_collapsed), delta="InSAR DPM ≥ 0,40" if total_collapsed > 0 else "Sin colapsos estructurales", delta_color="inverse" if total_collapsed > 0 else "off")
-with kpi4: st.metric("Prioridad P1 (Rescate 112)", fmt_int(p1_pop), delta="Evacuación Inmediata" if p1_pop > 0 else "Situación bajo control", delta_color="inverse" if p1_pop > 0 else "off")
-with kpi5: st.metric("Gatillo Paramétrico (Cat Bond)", fmt_dec(payout_rate, 1, "%"), delta=f"{fmt_dec(total_payout_m, 1, ' M€')} Liberados < 48h", delta_color="inverse" if payout_rate > 50.0 else "normal")
-
-st.markdown(
-    f"""
-    <div class='triage-hud'>
-        <span>Población Afectada (Datos Telco): </span>
-        <span class='t-p1'>P1 (Crítica): {fmt_int(p1_pop)}</span> |
-        <span class='t-p2'>P2 (Alta): {fmt_int(p2_pop)}</span> |
-        <span class='t-p3'>P3 (Moderada): {fmt_int(p3_pop)}</span> |
-        <span class='t-p4'>P4 (Baja): {fmt_int(p4_pop)}</span>
-    </div>
-    """, unsafe_allow_html=True
-)
-
-if "map_lat" not in st.session_state: st.session_state["map_lat"] = 39.4320
-if "map_lon" not in st.session_state: st.session_state["map_lon"] = -0.4150
-if "map_zoom" not in st.session_state: st.session_state["map_zoom"] = 12.6
-if "map_pitch" not in st.session_state: st.session_state["map_pitch"] = 52
 
 # ==============================================================================
 # 10. PESTAÑAS DEL CENTRO DE MANDO C2
